@@ -1,0 +1,83 @@
+extern "C" func malloc(size: usize): ptr[void]
+extern "C" func realloc(ptr: ptr[void], size: usize): ptr[void]
+extern "C" func free(ptr: ptr[void]): void
+
+unsafe public func vix_malloc(size: usize): Result[void[ptr], ()]
+    if new_size == 0 then
+        return Err()
+    end
+
+    create ptr: ptr[void] = malloc(size)
+
+    if not ptr then
+        Err(size)
+    end
+
+    return Ok(ptr)
+end
+
+unsafe public func vix_realloc(target: Array(int, str), ptr: ptr[void], new_size: usize): ptr[void]
+    if new_size == 0 then
+        panic(format("
+            [Error]: Run time error: realloc with size 0.
+            | line: {}:{}
+            | realloc(...)
+            | ^^^^^^^^^^-- You need to add a size here
+            |-> help:
+            |  realloc(some_ptr, size)
+            |                   ^^^^
+            ---------------------------------------------
+        ", target[0], target[1]))
+    end
+
+    if ptr.is_null() then
+        match malloc(new_size):
+            case Ok(ptr):
+                return ptr
+            case Err(size):
+                panic(format("
+                    [Error]: Run time error: Malloc tried to return NULL
+                    | line: {}:{}
+                    | malloc(...)
+                    | ^^^^^^^^^^ faield
+                    | bytes: {}
+                    |-> note:
+                    | This panic happened for privent malloc from return null This can coust problmes and undefied behiver
+                    |-> help:
+                    |  Check if malloc have enogth memory space
+                    | ... i'll add more in future
+                    |
+                    ---------------------------------------------
+        ", target[0], target[1], size))
+    end
+
+    create new_ptr: ptr[void] = realloc(ptr, new_size)
+
+    if not new_ptr then
+
+        panic(format("
+            [Error]: Run time error: Malloc tried to return NULL
+                | line: {}:{}
+                | realloc(...)
+                | ^^^^^^^^^^ failed
+                | bytes: {}
+                |-> note:
+                | This panic happened for privent malloc from return null This can coust problmes and undefied behiver
+                |-> help:
+                |  Check if malloc have enogth memory space
+                | ... i'll add more in future
+                |
+                ---------------------------------------------
+        ", target[0], target[1], size))
+    end
+
+    return new_ptr
+end
+
+unsafe public func vix_free(ptr[void])
+    if ptr.is_null then return end
+
+    free(ptr)
+end
+
+module: (vix_malloc as malloc, vix_realloc as realloc, vix_free as free)
