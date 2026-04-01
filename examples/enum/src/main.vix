@@ -1,0 +1,6 @@
+public enum Action:
+    Quit,
+    Join(game: str),
+    Read(data: any),
+    Write(data: any),
+end
