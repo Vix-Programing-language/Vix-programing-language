@@ -65,6 +65,8 @@ static inline void arr__ensure_cap_impl(
     *cap = new_cap;
 }
 
+#define ARR(T) struct { T* data; size_t len; size_t cap; }
+
 #define ARR_POP(arr) \
     ((arr).data[(ASSERT((arr).len), --(arr).len)])
 

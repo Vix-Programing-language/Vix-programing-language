@@ -7,8 +7,6 @@ typedef struct Stmts Stmts;
 typedef struct Type Type;
 typedef struct Exprs Exprs;
 
-#define ARR(T) struct { T* data; size_t len; size_t cap; }
-
 typedef enum {
     Plus = 1,
     Minuss,
