@@ -1,4 +1,5 @@
-#include "token/lexer.h"
+#include "import.h"
+#include "ast.h"
 
 
 static char lexer_advance_char(Lexer* self);
@@ -11,15 +12,13 @@ static void lexer_numbers(Lexer* self);
 static void lexer_strings(Lexer* self);
 static void lexer_char_literal(Lexer* self);
 
-Lexer lexer_new(FileId file_id, const char* source) {
+Lexer lexer_new(const char* source) {
     Lexer ans = (Lexer){
-        .source = source,
-        .cur = source,
-        .file_id = file_id,
+        .source   = source,
+        .cur   = source,
     };
-
+ 
     ARR_PUSH(ans.line_starts, ans.cur);
-
     return ans;
 }
 
@@ -39,7 +38,10 @@ void lexer_advance(Lexer* self) {
 static char lexer_advance_char(Lexer* self) {
     char ans = self->cur[0];
     if (ans == '\n') {
-        ARR_PUSH(self->line_starts, self->cur + 1);
+        self->pos.line++;
+        self->pos.col = 1;
+    } else {
+        self->pos.col++;
     }
     if (ans != '\0') self->cur++;
     return ans;
@@ -65,6 +67,7 @@ static void compue_top(Lexer* self) {
     skip_comments(self);
 
     self->top.range.start = self->cur;
+    self->top.range.pos   = self->pos;
 
     char c = self->cur[0];
     if (c == '\0') { self->top.tag = EOFs; } 
