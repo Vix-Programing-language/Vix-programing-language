@@ -25,6 +25,8 @@ typedef struct {
 FileManager file_manager_new(void);
 void file_manager_free(FileManager* self);
 FileId file_manager_add(FileManager* self, const char* path, const char* source);
+bool file_manager_has(const FileManager* self, const char* path);
+void file_manager_set_line_starts(FileManager* self, FileId id, LineStarts line_starts);
 ManagedFile* file_manager_get(FileManager* self, FileId id);
 const ManagedFile* file_manager_get_const(const FileManager* self, FileId id);
 bool file_manager_get_location(const FileManager* self, FileId id, const char* ptr, size_t* out_line, size_t* out_col);

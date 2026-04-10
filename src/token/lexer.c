@@ -18,6 +18,8 @@ Lexer lexer_new(FileId file_id, const char* source) {
         .file_id = file_id,
     };
 
+    ARR_PUSH(ans.line_starts, ans.cur);
+
     return ans;
 }
 
@@ -36,6 +38,9 @@ void lexer_advance(Lexer* self) {
 
 static char lexer_advance_char(Lexer* self) {
     char ans = self->cur[0];
+    if (ans == '\n') {
+        ARR_PUSH(self->line_starts, self->cur + 1);
+    }
     if (ans != '\0') self->cur++;
     return ans;
 }

@@ -170,6 +170,7 @@ typedef struct {
     const char* cur;
     size_t file_id;
     LexerToken top;
+    LineStarts line_starts;
 } Lexer;
 
 typedef enum {

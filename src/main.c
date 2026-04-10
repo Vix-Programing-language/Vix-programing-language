@@ -5,7 +5,7 @@
 #include "token/parser.h"
 #include "type.h"
 char*       read_file_to_string(const char* path);
-LexerToken* lex_all(FileId file_id, const char* source, size_t* out_count);
+LexerToken* lex_all(FileManager* files, FileId file_id, const char* source, size_t* out_count);
 void        print_expression(Exprs expr, int depth);
 void        print_statement(Stmts stmt, int depth);
 
@@ -40,7 +40,7 @@ char* read_file_to_string(const char* path) {
     return buffer;
 }
 
-LexerToken* lex_all(FileId file_id, const char* source, size_t* out_count) {
+LexerToken* lex_all(FileManager* files, FileId file_id, const char* source, size_t* out_count) {
     Lexer  lexer  = lexer_new(file_id, source);
     size_t cap    = 64;
     size_t count  = 0;
@@ -56,6 +56,10 @@ LexerToken* lex_all(FileId file_id, const char* source, size_t* out_count) {
         if (tok.tag == EOFs) break;
         lexer_advance(&lexer);
     }
+
+    ARR_PUSH(lexer.line_starts, source + strlen(source) + 1);
+    file_manager_set_line_starts(files, file_id, lexer.line_starts);
+
     *out_count = count;
     return tokens;
 }
@@ -415,7 +419,7 @@ int main(int argc, char** argv) {
     printf("=== RUNNING: %s ===\n", filename);
 
     size_t      token_count = 0;
-    LexerToken* tokens      = lex_all(file_id, source, &token_count);
+    LexerToken* tokens      = lex_all(&files, file_id, source, &token_count);
     if (!tokens) {
         printf("Lexing failed.\n");
         file_manager_free(&files);

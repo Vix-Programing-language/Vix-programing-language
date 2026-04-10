@@ -1,22 +1,21 @@
 #include "file_manager.h"
 
-static void file_record_rebuild_line_starts(ManagedFile* file) {
-    file->line_starts.len = 0;
-    ARR_PUSH(file->line_starts, file->source);
-
-    for (const char* cur = file->source; *cur != '\0'; ++cur) {
-        if (*cur == '\n') {
-            ARR_PUSH(file->line_starts, cur + 1);
-        }
-    }
-
-    ARR_PUSH(file->line_starts, file->source + strlen(file->source) + 1);
-}
-
 FileManager file_manager_new(void) {
     return (FileManager){
         .path_to_id = file_path_map_init(),
     };
+}
+
+bool file_manager_has(const FileManager* self, const char* path) {
+    return self && self->path_to_id && file_path_map_get(self->path_to_id, path) != kh_end(self->path_to_id);
+}
+
+void file_manager_set_line_starts(FileManager* self, FileId id, LineStarts line_starts) {
+    ManagedFile* file = file_manager_get(self, id);
+    ASSERT(file != NULL);
+
+    free(file->line_starts.data);
+    file->line_starts = line_starts;
 }
 
 void file_manager_free(FileManager* self) {
@@ -41,14 +40,7 @@ void file_manager_free(FileManager* self) {
 }
 
 FileId file_manager_add(FileManager* self, const char* path, const char* source) {
-    khint_t it = file_path_map_get(self->path_to_id, path);
-    if (it != kh_end(self->path_to_id)) {
-        FileId id = kh_val(self->path_to_id, it);
-        ManagedFile* file = &self->slots.data[id];
-        file->source = source;
-        file_record_rebuild_line_starts(file);
-        return id;
-    }
+    ASSERT(!file_manager_has(self, path));
 
     FileId id = self->slots.len;
     ManagedFile file = {
@@ -57,12 +49,11 @@ FileId file_manager_add(FileManager* self, const char* path, const char* source)
         .source = source,
         .is_active = true,
     };
-    file_record_rebuild_line_starts(&file);
     ARR_PUSH(self->slots, file);
     ARR_PUSH(self->files, id);
 
     int absent = 0;
-    it = file_path_map_put(self->path_to_id, self->slots.data[id].path, &absent);
+    khint_t it = file_path_map_put(self->path_to_id, self->slots.data[id].path, &absent);
     ASSERT(absent == 1);
     kh_val(self->path_to_id, it) = id;
     return id;
