@@ -1,7 +1,6 @@
 // #include "import.h"
 // #include "register.h"
 // #include "type.h"
-// #include "uthash.h"
 
 // Type infer_expr_type(Exprs* expr, Register* reg);
 // Type resolve_type(SourceRange r, Register* reg);

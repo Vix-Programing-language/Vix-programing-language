@@ -1,10 +1,11 @@
 #include "import.h"
+#include "file_manager.h"
 #include "register.h"
 #include "token/lexer.h"
 #include "token/parser.h"
 #include "type.h"
 char*       read_file_to_string(const char* path);
-LexerToken* lex_all(const char* source, size_t* out_count);
+LexerToken* lex_all(FileId file_id, const char* source, size_t* out_count);
 void        print_expression(Exprs expr, int depth);
 void        print_statement(Stmts stmt, int depth);
 
@@ -39,8 +40,8 @@ char* read_file_to_string(const char* path) {
     return buffer;
 }
 
-LexerToken* lex_all(const char* source, size_t* out_count) {
-    Lexer  lexer  = lexer_new(source);
+LexerToken* lex_all(FileId file_id, const char* source, size_t* out_count) {
+    Lexer  lexer  = lexer_new(file_id, source);
     size_t cap    = 64;
     size_t count  = 0;
     LexerToken* tokens = malloc(sizeof(LexerToken) * cap);
@@ -408,12 +409,16 @@ int main(int argc, char** argv) {
     char* source = read_file_to_string(filename);
     if (!source) return 1;
 
+    FileManager files = file_manager_new();
+    FileId file_id = file_manager_add(&files, filename, source);
+
     printf("=== RUNNING: %s ===\n", filename);
 
     size_t      token_count = 0;
-    LexerToken* tokens      = lex_all(source, &token_count);
+    LexerToken* tokens      = lex_all(file_id, source, &token_count);
     if (!tokens) {
         printf("Lexing failed.\n");
+        file_manager_free(&files);
         free(source);
         return 1;
     }
@@ -447,6 +452,7 @@ int main(int argc, char** argv) {
     register_free(&global_reg);
     free(errors.errors);
     free(tokens);
+    file_manager_free(&files);
     free(source);
 
     printf("\n=== DONE ===\n");

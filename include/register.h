@@ -1,7 +1,7 @@
 #ifndef REGISTER_H
 #define REGISTER_H
 
-#include "uthash.h"
+#include "third-party/khashl.h"
 #include "token/ast/ast.h"
 
 typedef enum {
@@ -51,14 +51,10 @@ typedef struct {
     } data;
 } RegisterEntry;
 
-typedef struct {
-    char*          key;
-    RegisterEntry  value;
-    UT_hash_handle hh;
-} RegisterBucket;
+KHASHL_MAP_INIT(KH_LOCAL, RegisterTable, register_table, kh_cstr_t, RegisterEntry, kh_hash_str, kh_eq_str)
 
 typedef struct Register {
-    RegisterBucket*  table;
+    RegisterTable*  table;
     struct Register* parent;
 } Register;
 
@@ -68,7 +64,6 @@ typedef struct {
 } GenericArg;
 
 typedef struct {
-    UT_hash_handle hh;
     char*       func_name;
     GenericArg* args;
     size_t      args_count;
@@ -77,8 +72,10 @@ typedef struct {
     size_t      params_count;
 } GenericInstance;
 
+KHASHL_MAP_INIT(KH_LOCAL, GenericInstanceTable, generic_instance_table, kh_cstr_t, GenericInstance, kh_hash_str, kh_eq_str)
+
 typedef struct {
-    GenericInstance* table;
+    GenericInstanceTable* table;
 } GenericRegistry;
 
 #endif
