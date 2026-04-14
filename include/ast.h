@@ -1,10 +1,14 @@
+#ifndef VIX_TOKEN_AST_H
+#define VIX_TOKEN_AST_H
+
 #include "import.h"
 
 typedef struct Stmts Stmts;
+typedef struct Type Type;
 typedef struct Exprs Exprs;
 
 typedef enum {
-    Plus=1,
+    Plus = 1,
     Minuss,
     Stars,
     Slashs,
@@ -100,20 +104,8 @@ typedef enum {
     Identifier,
 } LexerTokenTag;
 
-typedef union {
-    char* s;
-    uint64_t value_int;
-    float value_float;
-    char value_char;
-} LexerTokenData;
-
 typedef struct {
-    const char* start;
-    const char* end;
-}SourceRange;
-
-typedef struct {
-    const char** data;//last line is array end ie \0
+    const char** data;
     size_t len;
     size_t cap;
 } LineStarts;
@@ -126,14 +118,12 @@ static inline size_t get_line_num(const LineStarts* starts, uintptr_t tgt) {
     uintptr_t first = (uintptr_t)starts->data[0];
     uintptr_t end   = (uintptr_t)starts->data[starts->len - 1];
 
-    // Outside the covered buffer range.
     if (tgt < first || tgt >= end) {
         return (size_t)-1;
     }
 
-    // Search among actual line starts: [0, len-2]
     size_t lo = 0;
-    size_t hi = starts->len - 1; // exclusive upper bound for line index + 1
+    size_t hi = starts->len - 1;
 
     while (lo + 1 < hi) {
         size_t mid = lo + (hi - lo) / 2;
@@ -149,19 +139,37 @@ static inline size_t get_line_num(const LineStarts* starts, uintptr_t tgt) {
     return lo;
 }
 
+
+typedef struct {
+    const char* start;
+    const char* end;
+} SourceRange;
+
+typedef struct {
+    SourceRange first;
+    SourceRange second;
+} EnumField;
+
+typedef union {
+    uint64_t value_int;
+    float value_float;
+    char value_char;
+    char* s;
+} LexerTokenData;
+
 typedef struct {
     LexerTokenTag tag;
+    SourceRange range;
     LexerTokenData data;
-    SourceRange debug;
 } LexerToken;
 
 typedef struct {
-    LexerToken top;
     const char* source;
     const char* cur;
+    size_t file_id;
+    LexerToken top;
     LineStarts line_starts;
 } Lexer;
-
 
 typedef enum {
     VarMode_Value,
@@ -178,7 +186,6 @@ typedef struct {
     VarModeTag tag;
     Mutability mutability;
 } VarMode;
-
 
 typedef enum {
     Pattern_Wildcard,
@@ -200,45 +207,48 @@ typedef struct {
     } data;
 } Pattern;
 
-
-
 typedef struct {
-    char* name;
-    char* c_type;
+    SourceRange name;
+    SourceRange c_type;
     VarMode mode;
 } Param;
 
+typedef struct {
+    LexerTokenTag op;
+    SourceRange function;
+} Operation;
 
 typedef struct {
-    char* name;
-    char* return_type;
+    SourceRange name;
+    SourceRange return_type;
     Param* params;
     size_t params_count;
     Stmts* body;
     size_t body_count;
     bool is_pub;
     bool is_unsafe;
-    char* file;
-    int lines;
-    size_t col;
+    bool has_operation;
+    Operation operation;
+    SourceRange range;
 } FunctionMethod;
 
- 
-
 typedef struct {
-    char* name;
-    char* return_type;
+    SourceRange name;
+    SourceRange return_type;
     Param* params;
     size_t params_count;
     Stmts* body;
     size_t body_count;
-    char* file;
-    int lines;
     bool is_pub;
-    size_t col;
+    SourceRange range;
 } TraitMethod;
 
- 
+typedef struct {
+    SourceRange name;
+    SourceRange* fields;
+    size_t fields_count;
+    SourceRange range;
+} EnumVariant;
 
 typedef struct {
     char* name;
@@ -250,17 +260,12 @@ typedef struct {
     size_t col;
 } TraitNode;
 
- 
-
 typedef struct {
-    char* name;
-    char* c_type;
+    SourceRange name;
+    SourceRange c_type;
     VarMode mode;
-    int lines;
-    size_t col;
+    SourceRange range;
 } StructParam;
-
- 
 
 typedef struct {
     char* name;
@@ -274,19 +279,6 @@ typedef struct {
     size_t col;
 } StructMethod;
 
- 
-
-typedef struct {
-    char* name;
-     
-    struct { char* first; char* second; }* fields;
-    size_t fields_count;
-    int lines;
-    size_t col;
-} EnumVariant;
-
- 
-
 typedef struct {
     char* name;
     EnumVariant* variants;
@@ -297,11 +289,9 @@ typedef struct {
     size_t col;
 } EnumNode;
 
- 
-
 typedef struct {
     char* name;
-    char* parent;  
+    char* parent;
     StructParam* fields;
     size_t fields_count;
     FunctionMethod* methods;
@@ -315,16 +305,13 @@ typedef struct {
     size_t col;
 } ClassMethod;
 
- 
-
 typedef struct {
     char* name;
     char* field;
 } EnumParam;
 
- 
-
 typedef enum {
+    Expr_Function,
     Expr_Class_Calls,
     Expr_Struct_Calls,
     Expr_Enum_Calls,
@@ -338,18 +325,17 @@ typedef enum {
 struct Exprs {
     ExprsTag tag;
     union {
-        struct { char* name; FunctionMethod function; char** input_calls; size_t input_calls_count; char* current_scope; bool insta_gen; size_t lines; size_t col; } class_calls;
-        struct { char* name; StructParam param; char* target_field; char* input_field; char* insta_name; bool insta_gen; size_t lines; size_t col; } struct_calls;
-        struct { char* name; EnumParam param; char* target_field; char* input_field; bool insta_gen; size_t lines; size_t col; } enum_calls;
-        struct { Exprs* left; LexerTokenTag op; Exprs* right; size_t lines; size_t col; } binary_ops;
-        struct { char* value; size_t lines; size_t col; } literals;
-        struct { char* name; size_t lines; size_t col; } vars;
-        struct { char* name; size_t lines; size_t col; } identifiers;
-        struct { Exprs* object; char* method; Exprs* args; size_t args_count; size_t lines; size_t col; } method_calls;
+        struct { SourceRange name; SourceRange* generic_params; size_t generic_params_count; Param* param; size_t param_count; SourceRange range; } function_call;
+        struct { SourceRange name; SourceRange function; SourceRange* generic_params; size_t generic_params_count; Param* param; size_t param_count; SourceRange range; } class_calls;
+        struct { SourceRange name; SourceRange function; SourceRange* generic_params; size_t generic_params_count; Param* param; size_t param_count; SourceRange range; } struct_calls;
+        struct { SourceRange name; SourceRange field; SourceRange* generic_params; size_t generic_params_count; Param* param; size_t param_count; SourceRange range; } enum_calls;
+        struct { Exprs* left; LexerTokenTag op; Exprs* right; SourceRange range; } binary_ops;
+        struct { SourceRange range; } literals;
+        struct { SourceRange name; SourceRange range; } vars;
+        struct { SourceRange name; SourceRange range; } identifiers;
+        struct { Exprs* object; SourceRange method; Exprs* args; size_t args_count; SourceRange range; } method_calls;
     } data;
 };
-
- 
 
 typedef struct {
     Pattern pattern;
@@ -358,8 +344,6 @@ typedef struct {
     size_t lines;
     size_t col;
 } MatchArm;
-
- 
 
 typedef enum {
     Stmt_Functions,
@@ -378,26 +362,34 @@ typedef enum {
     Stmt_Locals,
     Stmt_Consts,
     Stmt_ExprStmt,
+    Stmt_Assigns,
 } StmtsTag;
+
+typedef enum {
+    ClassAttach_None,
+    ClassAttach_Struct,
+    ClassAttach_Enum,
+} ClassAttachTag;
 
 struct Stmts {
     StmtsTag tag;
     union {
-        struct { char* name; char** generic_params; size_t generic_params_count; Param* params; size_t params_count; char* return_type; Stmts* body; size_t body_count; bool is_pub; bool is_unsafe; size_t lines; size_t col; } functions;
-        struct { char* name; char** generic_params; size_t generic_params_count; Param* class_params; size_t class_params_count; StructParam* fields; size_t fields_count; FunctionMethod* methods; size_t methods_count; char* parent; char** traits; size_t traits_count; bool is_pub; size_t lines; size_t col; } classes;
-        struct { char* name; TraitMethod* methods; size_t methods_count; bool is_pub; size_t lines; size_t col; } traits;
-        struct { char* name; StructParam* fields; size_t fields_count; bool is_pub; size_t lines; size_t col; } structs;
-        struct { char* name; EnumVariant* variants; size_t variants_count; bool is_pub; size_t lines; size_t col; } enums;
-        struct { Exprs expr; MatchArm* cases; size_t cases_count; Stmts* default_body; size_t default_body_count; size_t lines; size_t col; } matchs;
-        struct { Stmts* body; size_t body_count; size_t lines; size_t col; } unsafes;
-        struct { Exprs cond; Stmts* body; size_t body_count; size_t lines; size_t col; } whiles;
-        struct { Exprs cond; Stmts* body; size_t body_count; Stmts* else_body; size_t else_body_count; size_t lines; size_t col; } ifs;
-        struct { char* _var; Exprs iter; Stmts* body; size_t body_count; size_t lines; size_t col; } fors;
-        struct { Exprs expr; size_t lines; size_t col; } returns;
-        struct { char* name; char* c_type; bool has_value; Exprs value; VarMode mode; size_t lines; size_t col; } vars;
-        struct { char* name; char* c_type; bool has_value; Exprs value; VarMode mode; size_t lines; size_t col; } lets;
-        struct { char* name; char* c_type; bool is_pub; size_t lines; size_t col; } locals;
-        struct { char* name; char* c_type; bool has_value; Exprs value; bool is_pub; size_t lines; size_t col; } consts;
+        struct { Exprs target; LexerTokenTag op; Exprs value; SourceRange range; } assigns;
+        struct { SourceRange name; SourceRange* generic_params; size_t generic_params_count; Param* params; size_t params_count; SourceRange return_type; Stmts* body; size_t body_count; bool is_pub; bool is_unsafe; SourceRange range; } functions;
+        struct { SourceRange name; SourceRange* generic_params; size_t generic_params_count; Param* class_params; size_t class_params_count; StructParam* fields; size_t fields_count; FunctionMethod* methods; size_t methods_count; SourceRange parent; SourceRange* traits; size_t traits_count; bool is_pub; SourceRange range; bool has_attached; ClassAttachTag attached_tag; StructParam* attached_fields; size_t attached_fields_count; } classes;
+        struct { SourceRange name; TraitMethod* methods; size_t methods_count; bool is_pub; SourceRange range; } traits;
+        struct { SourceRange name; SourceRange* generic_params; size_t generic_params_count; StructParam* fields; size_t fields_count; bool is_pub; SourceRange range; } structs;
+        struct { SourceRange name; SourceRange* generic_params; size_t generic_params_count; EnumVariant* variants; size_t variants_count; bool is_pub; SourceRange range; } enums;
+        struct { Exprs expr; MatchArm* cases; size_t cases_count; Stmts* default_body; size_t default_body_count; SourceRange range; } matchs;
+        struct { Stmts* body; size_t body_count; SourceRange range; } unsafes;
+        struct { Exprs cond; Stmts* body; size_t body_count; Stmts* else_body; size_t else_body_count; SourceRange range; } ifs;
+        struct { Exprs cond; Stmts* body; size_t body_count; SourceRange range; } whiles;
+        struct { SourceRange _var; Exprs iter; Stmts* body; size_t body_count; SourceRange range; } fors;
+        struct { Exprs expr; SourceRange range; } returns;
+        struct { SourceRange name; SourceRange c_type; bool has_value; Exprs value; VarMode mode; SourceRange range; } vars;
+        struct { SourceRange name; SourceRange c_type; bool has_value; Exprs value; VarMode mode; SourceRange range; } lets;
+        struct { SourceRange name; SourceRange c_type; bool is_pub; SourceRange range; } locals;
+        struct { SourceRange name; SourceRange c_type; bool has_value; Exprs value; bool is_pub; SourceRange range; } consts;
         struct { Exprs expr; } expr_stmt;
     } data;
 };
@@ -410,18 +402,17 @@ typedef enum {
     Type_Bool,
     Type_Void,
     Type_Array,
-    Type_Option,
     Type_Custom,
 } TypeTag;
-
-typedef struct Type Type;
 
 struct Type {
     TypeTag tag;
     union {
-        struct { uint64_t bits; } int_t;
-        struct { uint64_t bits; } float_t; 
+        struct { int bits; } int_t;
+        struct { int bits; } float_t;
         struct { Type* inner; } array_t;
-        struct { char* name; } custom;
+        struct { SourceRange name; } custom;
     } data;
 };
+
+#endif

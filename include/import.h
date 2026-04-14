@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #ifndef VIX_IMPORT_H
 #define VIX_IMPORT_H
 
@@ -63,6 +64,8 @@ static inline void arr__ensure_cap_impl(
     *data = checked_realloc(*data, new_cap * elem_size);
     *cap = new_cap;
 }
+
+#define ARR(T) struct { T* data; size_t len; size_t cap; }
 
 #define ARR_POP(arr) \
     ((arr).data[(ASSERT((arr).len), --(arr).len)])
