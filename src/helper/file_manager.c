@@ -34,7 +34,6 @@ void file_manager_free(FileManager* self) {
     }
 
     free(self->slots.data);
-    free(self->files.data);
     file_path_map_destroy(self->path_to_id);
     *self = (FileManager){0};
 }
@@ -50,7 +49,6 @@ FileId file_manager_add(FileManager* self, const char* path, const char* source)
         .is_active = true,
     };
     ARR_PUSH(self->slots, file);
-    ARR_PUSH(self->files, id);
 
     int absent = 0;
     khint_t it = file_path_map_put(self->path_to_id, self->slots.data[id].path, &absent);

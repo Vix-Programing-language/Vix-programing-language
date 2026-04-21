@@ -4,9 +4,16 @@
 
 Type infer_expr_type(Exprs* expr, Register* reg);
 Type resolve_type(SourceRange r, Register* reg);
-RegisterEntry* register_get(Register* reg, const char* key);
-void register_insert(Register* reg, const char* key, RegisterEntry entry);
+RegisterEntry* register_get(Register* reg, StringView key);
+void register_insert(Register* reg, StringView key, RegisterEntry entry);
 bool register_class(Stmts* stmt, Register* reg, CheckerErrList* errors);
+
+static inline StringView string_view_from_range(SourceRange range) {
+    return (StringView){
+        .ptr = range.start,
+        .len = (size_t)(range.end - range.start),
+    };
+}
 
 static inline const char* op_tag_to_str(LexerTokenTag tag) {
     switch (tag) {
@@ -78,75 +85,62 @@ void resolve_operations(Exprs* operations, Register* reg, CheckerErrList* errors
     else if (lhs->tag == Expr_Vars) name_r = lhs->data.vars.name;
     else {
         checker_err_push(errors, (CheckerErr){
-            .tag = Err_Tag_LHS,
+            .tag      = Err_Tag_LHS,
             .data.lhs = {
-                .file = operations->data.binary_ops.range.pos.file,
-                .line = operations->data.binary_ops.range.pos.line,
-                .col  = operations->data.binary_ops.range.pos.col,
+                .range = operations->data.binary_ops.range,
             }
         });
         return;
     }
 
-    char* name = strndup(name_r.start, name_r.end - name_r.start);
-    RegisterEntry* entry = register_get(reg, name);
+    StringView name_sv = string_view_from_range(name_r);
+    RegisterEntry* entry = register_get(reg, name_sv);
 
     if (!entry) {
+        char* name = strndup(name_r.start, name_r.end - name_r.start);
         checker_err_push(errors, (CheckerErr){
-            .tag = Err_Tag_VSF,
+            .tag      = Err_Tag_VSF,
             .data.vsf = {
-                .file = name_r.pos.file,
-                .line = name_r.pos.line,
-                .col = name_r.pos.col,
+                .range    = name_r,
                 .var_name = name,
             }
         });
-        free(name);
         return;
     }
 
     if (entry->tag != Reg_Var) {
         checker_err_push(errors, (CheckerErr){
-            .tag = Err_Tag_VNM,
+            .tag      = Err_Tag_VNM,
             .data.vnm = {
-                .file = name_r.pos.file,
-                .line = name_r.pos.line,
-                .col = name_r.pos.col,
-                .var_name = name,
-                .binding_kind = entry->tag == Reg_Let ? "let" : entry->tag == Reg_Const ? "const" : "local",
+                .range = name_r,
+                .var_name     = entry->name,
+                .binding_kind = entry->tag == Reg_Let   ? "let"   : entry->tag == Reg_Const ? "const" : "local",
             }
         });
-        free(name);
         return;
     }
 
     if (entry->type.tag != Type_Custom) {
         checker_err_push(errors, (CheckerErr){
-            .tag = Err_Tag_VPT,
+            .tag      = Err_Tag_VPT,
             .data.vpt = {
-                .file = name_r.pos.file,
-                .line = name_r.pos.line,
-                .col  = name_r.pos.col,
-                .var_name = name,
+                .range = name_r,
+                .var_name = entry->name,
                 .type_name = type_tag_to_str(entry->type),
             }
         });
-        free(name);
         return;
     }
 
     SourceRange class_name_r = entry->type.data.custom.name;
     char* class_name = strndup(class_name_r.start, class_name_r.end - class_name_r.start);
-    RegisterEntry* class_entry = register_get(reg, class_name);
-    free(name);
+    RegisterEntry* class_entry = register_get(reg, string_view_from_range(class_name_r));
 
     if (!class_entry) {
         checker_err_push(errors, (CheckerErr){
             .tag = Err_Tag_TNF,
             .data.tnf = {
-                .file = class_name_r.pos.file,
-                .line = class_name_r.pos.line,
-                .col = class_name_r.pos.col,
+                .range = class_name_r,
                 .type_name = class_name,
             }
         });
@@ -158,9 +152,7 @@ void resolve_operations(Exprs* operations, Register* reg, CheckerErrList* errors
         checker_err_push(errors, (CheckerErr){
             .tag = Err_Tag_TNC,
             .data.tnc = {
-                .file = class_name_r.pos.file,
-                .line = class_name_r.pos.line,
-                .col = class_name_r.pos.col,
+                .range = class_name_r,
                 .type_name = class_name,
                 .actual_kind = class_entry->tag == Reg_Struct ? "struct" : "enum",
             }
@@ -171,11 +163,9 @@ void resolve_operations(Exprs* operations, Register* reg, CheckerErrList* errors
 
     if (class_entry->tag != Reg_Class) {
         checker_err_push(errors, (CheckerErr){
-            .tag = Err_Tag_TNC,
+            .tag      = Err_Tag_TNC,
             .data.tnc = {
-                .file = class_name_r.pos.file,
-                .line = class_name_r.pos.line,
-                .col = class_name_r.pos.col,
+                .range = class_name_r,
                 .type_name = class_name,
                 .actual_kind = "unknown",
             }
@@ -197,9 +187,7 @@ void resolve_operations(Exprs* operations, Register* reg, CheckerErrList* errors
         checker_err_push(errors, (CheckerErr){
             .tag = Err_Tag_OUD,
             .data.oud = {
-                .file = class_name_r.pos.file,
-                .line = class_name_r.pos.line,
-                .col = class_name_r.pos.col,
+                .range = class_name_r,
                 .class_name = class_name,
                 .op = op_tag_to_str(op_tag),
             }
@@ -213,9 +201,7 @@ void resolve_operations(Exprs* operations, Register* reg, CheckerErrList* errors
         checker_err_push(errors, (CheckerErr){
             .tag      = Err_Tag_OMP,
             .data.omp = {
-                .file        = matched->range.pos.file,
-                .line        = matched->range.pos.line,
-                .col         = matched->range.pos.col,
+                .range       = matched->range,
                 .class_name  = class_name,
                 .method_name = method_name,
                 .op          = op_tag_to_str(op_tag),
@@ -226,20 +212,18 @@ void resolve_operations(Exprs* operations, Register* reg, CheckerErrList* errors
         return;
     }
 
-    Type rhs_type = infer_expr_type(rhs, reg);
+    Type rhs_type      = infer_expr_type(rhs, reg);
     Type expected_type = resolve_type(matched->params[0].c_type, reg);
 
     if (rhs_type.tag != expected_type.tag) {
         char* method_name = strndup(matched->name.start, matched->name.end - matched->name.start);
         checker_err_push(errors, (CheckerErr){
-            .tag = Err_Tag_OMM,
+            .tag      = Err_Tag_OMM,
             .data.omm = {
-                .file = matched->range.pos.file,
-                .line = matched->range.pos.line,
-                .col = matched->range.pos.col,
-                .class_name = class_name,
-                .method_name = method_name,
-                .op = op_tag_to_str(op_tag),
+                .range         = matched->range,
+                .class_name    = class_name,
+                .method_name   = method_name,
+                .op            = op_tag_to_str(op_tag),
                 .expected_type = type_tag_to_str(expected_type),
                 .actual_type   = type_tag_to_str(rhs_type),
             }
@@ -253,61 +237,59 @@ void resolve_operations(Exprs* operations, Register* reg, CheckerErrList* errors
 }
 
 void resolve_generic_call(Exprs* call, Register* reg, GenericRegistry* greg, CheckerErrList* errors) {
-    SourceRange func_name = call->data.function_call.name;
-    size_t params_count = call->data.function_call.param_count;
-    GenericArg* args = malloc(params_count * sizeof(GenericArg));
+    SourceRange func_name    = call->data.function_call.name;
+    StringView   func_name_sv = {
+        .ptr = func_name.start,
+        .len = (size_t)(func_name.end - func_name.start),
+    };
+    size_t      params_count = call->data.function_call.param_count;
+    GenericArg* args         = malloc(params_count * sizeof(GenericArg));
 
     for (size_t i = 0; i < params_count; i++) {
         SourceRange param_name = call->data.function_call.param[i].name;
-        size_t len = param_name.end - param_name.start;
-        char* key = strndup(param_name.start, len);
-
-        RegisterEntry* entry = register_get(reg, key);
+        RegisterEntry* entry = register_get(reg, string_view_from_range(param_name));
 
         if (!entry) {
+            char* key = strndup(param_name.start, param_name.end - param_name.start);
             checker_err_push(errors, (CheckerErr){
-                .tag = Err_Tag_VSF,
+                .tag      = Err_Tag_VSF,
                 .data.vsf = {
-                    .file = param_name.pos.file,
-                    .line = param_name.pos.line,
-                    .col = param_name.pos.col,
+                    .range    = param_name,
                     .var_name = key,
                 }
             });
-            free(key);
             free(args);
             return;
         }
 
         args[i] = (GenericArg){
             .type_name = strdup(type_tag_to_str(entry->type)),
-            .type = entry->type
+            .type      = entry->type
         };
-        free(key);
     }
 
-    size_t fname_len = func_name.end - func_name.start;
-    char*  fname_key = strndup(func_name.start, fname_len);
+    khint_t existing_it = generic_instance_table_get(greg->table, func_name_sv);
+    bool has_matching_instance = existing_it != kh_end(greg->table)
+        && kh_val(greg->table, existing_it).args_count > 0
+        && kh_val(greg->table, existing_it).args[0].type.tag == args[0].type.tag;
 
-    GenericInstance* existing = NULL;
-    HASH_FIND_STR(greg->table, fname_key, existing);
-
-    if (existing && existing->args[0].type.tag == args[0].type.tag) {
-        free(fname_key);
+    if (has_matching_instance) {
         free(args);
         return;
     }
 
-    GenericInstance* inst = malloc(sizeof(GenericInstance));
-    *inst = (GenericInstance){
-        .func_name = fname_key,
-        .args = args,
-        .args_count = params_count,
-        .return_type = args[0].type,
-        .params = NULL,
+    GenericInstance inst = {
+        .func_name    = func_name_sv,
+        .args         = args,
+        .args_count   = params_count,
+        .return_type  = args[0].type,
+        .params       = NULL,
         .params_count = 0,
     };
-    HASH_ADD_KEYPTR(hh, greg->table, inst->func_name, fname_len, inst);
+
+    int absent = 0;
+    khint_t it = generic_instance_table_put(greg->table, func_name_sv, &absent);
+    kh_val(greg->table, it) = inst;
 
 }
 
@@ -317,23 +299,17 @@ void populate_register(Stmts* body, size_t body_count, Register* reg, CheckerErr
 
         switch (stmt->tag) {
             case Stmt_Vars: {
-                size_t len = stmt->data.vars.name.end - stmt->data.vars.name.start;
-                char*  key = strndup(stmt->data.vars.name.start, len);
+                StringView key = string_view_from_range(stmt->data.vars.name);
 
                 RegisterEntry* existing = register_get(reg, key);
                 if (existing) {
                     checker_err_push(errors, (CheckerErr){
-                        .tag = Err_Tag_RDL,
+                        .tag      = Err_Tag_RDL,
                         .data.rdl = {
-                            .file = stmt->data.vars.range.pos.file,
-                            .line = stmt->data.vars.range.pos.line,
-                            .col = stmt->data.vars.range.pos.col,
-                            .var_name = key,
-                            .first_declared_line = 0,
-                            .first_declared_col  = 0,
+                            .range               = stmt->data.vars.range,
+                            .var_name            = existing->name,
                         }
                     });
-                    free(key);
                     break;
                 }
 
@@ -345,25 +321,23 @@ void populate_register(Stmts* body, size_t body_count, Register* reg, CheckerErr
                     stmt->data.vars.c_type.start != stmt->data.vars.c_type.end) {
                     Type value_type = infer_expr_type(&stmt->data.vars.value, reg);
                     if (t.tag != value_type.tag) {
+                        char* name = strndup(stmt->data.vars.name.start, stmt->data.vars.name.end - stmt->data.vars.name.start);
                         checker_err_push(errors, (CheckerErr){
                             .tag      = Err_Tag_VMV,
                             .data.vmv = {
-                                .file          = stmt->data.vars.range.pos.file,
-                                .line          = stmt->data.vars.range.pos.line,
-                                .col           = stmt->data.vars.range.pos.col,
-                                .var_name      = key,
+                                .range         = stmt->data.vars.range,
+                                .var_name      = name,
                                 .expected_type = type_tag_to_str(t),
                                 .actual_type   = type_tag_to_str(value_type),
                             }
                         });
-                        free(key);
                         break;
                     }
                 }
 
                 register_insert(reg, key, (RegisterEntry){
                     .tag      = Reg_Var,
-                    .name     = key,
+                    .name     = NULL,
                     .type     = t,
                     .data.var = { .type = t, .mode = stmt->data.vars.mode, .is_mut = true }
                 });
@@ -371,149 +345,129 @@ void populate_register(Stmts* body, size_t body_count, Register* reg, CheckerErr
             }
 
             case Stmt_Lets: {
-                size_t len = stmt->data.lets.name.end - stmt->data.lets.name.start;
-                char*  key = strndup(stmt->data.lets.name.start, len);
+                StringView key = string_view_from_range(stmt->data.lets.name);
 
                 RegisterEntry* existing = register_get(reg, key);
                 if (existing) {
                     checker_err_push(errors, (CheckerErr){
-                        .tag = Err_Tag_RDL,
+                        .tag      = Err_Tag_RDL,
                         .data.rdl = {
-                            .file = stmt->data.lets.range.pos.file,
-                            .line = stmt->data.lets.range.pos.line,
-                            .col = stmt->data.lets.range.pos.col,
-                            .var_name = key,
-                            .first_declared_line = 0,
-                            .first_declared_col  = 0,
+                            .range               = stmt->data.lets.range,
+                            .var_name            = existing->name,
                         }
                     });
-                    free(key);
                     break;
                 }
 
-                Type t = (stmt->data.lets.c_type.start != stmt->data.lets.c_type.end) ? resolve_type(stmt->data.lets.c_type, reg) : infer_expr_type(&stmt->data.lets.value, reg);
+                Type t = (stmt->data.lets.c_type.start != stmt->data.lets.c_type.end)
+                    ? resolve_type(stmt->data.lets.c_type, reg)
+                    : infer_expr_type(&stmt->data.lets.value, reg);
 
                 if (stmt->data.lets.has_value &&
                     stmt->data.lets.c_type.start != stmt->data.lets.c_type.end) {
                     Type value_type = infer_expr_type(&stmt->data.lets.value, reg);
                     if (t.tag != value_type.tag) {
+                        char* name = strndup(stmt->data.lets.name.start, stmt->data.lets.name.end - stmt->data.lets.name.start);
                         checker_err_push(errors, (CheckerErr){
-                            .tag = Err_Tag_VMV,
+                            .tag      = Err_Tag_VMV,
                             .data.vmv = {
-                                .file = stmt->data.lets.range.pos.file,
-                                .line = stmt->data.lets.range.pos.line,
-                                .col = stmt->data.lets.range.pos.col,
-                                .var_name = key,
+                                .range         = stmt->data.lets.range,
+                                .var_name      = name,
                                 .expected_type = type_tag_to_str(t),
-                                .actual_type = type_tag_to_str(value_type),
+                                .actual_type   = type_tag_to_str(value_type),
                             }
                         });
-                        free(key);
                         break;
                     }
                 }
 
                 register_insert(reg, key, (RegisterEntry){
-                    .tag = Reg_Let,
-                    .name = key,
-                    .type = t,
+                    .tag      = Reg_Let,
+                    .name     = NULL,
+                    .type     = t,
                     .data.let = { .type = t, .mode = stmt->data.lets.mode }
                 });
                 break;
             }
 
             case Stmt_Consts: {
-                size_t len = stmt->data.consts.name.end - stmt->data.consts.name.start;
-                char*  key = strndup(stmt->data.consts.name.start, len);
+                StringView key = string_view_from_range(stmt->data.consts.name);
 
                 if (!stmt->data.consts.has_value) {
+                    char* name = strndup(stmt->data.consts.name.start, stmt->data.consts.name.end - stmt->data.consts.name.start);
                     checker_err_push(errors, (CheckerErr){
-                        .tag = Err_Tag_CVN,
+                        .tag      = Err_Tag_CVN,
                         .data.cvn = {
-                            .file = stmt->data.consts.range.pos.file,
-                            .line = stmt->data.consts.range.pos.line,
-                            .col = stmt->data.consts.range.pos.col,
-                            .var_name = key,
+                            .range    = stmt->data.consts.range,
+                            .var_name = name,
                         }
                     });
-                    free(key);
                     break;
                 }
 
                 RegisterEntry* existing = register_get(reg, key);
                 if (existing) {
                     checker_err_push(errors, (CheckerErr){
-                        .tag = Err_Tag_RDL,
+                        .tag      = Err_Tag_RDL,
                         .data.rdl = {
-                            .file = stmt->data.consts.range.pos.file,
-                            .line = stmt->data.consts.range.pos.line,
-                            .col = stmt->data.consts.range.pos.col,
-                            .var_name = key,
-                            .first_declared_line = 0,
-                            .first_declared_col  = 0,
+                            .range               = stmt->data.consts.range,
+                            .var_name            = existing->name,
                         }
                     });
-                    free(key);
                     break;
                 }
 
-                Type t = (stmt->data.consts.c_type.start != stmt->data.consts.c_type.end) ? resolve_type(stmt->data.consts.c_type, reg) : infer_expr_type(&stmt->data.consts.value, reg);
+                Type t = (stmt->data.consts.c_type.start != stmt->data.consts.c_type.end)
+                    ? resolve_type(stmt->data.consts.c_type, reg)
+                    : infer_expr_type(&stmt->data.consts.value, reg);
 
                 register_insert(reg, key, (RegisterEntry){
-                    .tag = Reg_Const,
-                    .name = key,
-                    .type = t,
+                    .tag         = Reg_Const,
+                    .name        = NULL,
+                    .type        = t,
                     .data.const_ = { .type = t, .is_pub = stmt->data.consts.is_pub }
                 });
                 break;
             }
 
             case Stmt_Locals: {
-                size_t len = stmt->data.locals.name.end - stmt->data.locals.name.start;
-                char* key = strndup(stmt->data.locals.name.start, len);
+                StringView key = string_view_from_range(stmt->data.locals.name);
 
                 RegisterEntry* existing = register_get(reg, key);
                 if (existing) {
                     checker_err_push(errors, (CheckerErr){
-                        .tag = Err_Tag_RDL,
+                        .tag      = Err_Tag_RDL,
                         .data.rdl = {
-                            .file = stmt->data.locals.range.pos.file,
-                            .line = stmt->data.locals.range.pos.line,
-                            .col = stmt->data.locals.range.pos.col,
-                            .var_name = key,
-                            .first_declared_line = 0,
-                            .first_declared_col  = 0,
+                            .range               = stmt->data.locals.range,
+                            .var_name            = existing->name,
                         }
                     });
-                    free(key);
                     break;
                 }
 
                 Type t = resolve_type(stmt->data.locals.c_type, reg);
                 if (t.tag == Type_Void) {
+                    char* name = strndup(stmt->data.locals.name.start, stmt->data.locals.name.end - stmt->data.locals.name.start);
                     checker_err_push(errors, (CheckerErr){
-                        .tag = Err_Tag_TNF,
+                        .tag      = Err_Tag_TNF,
                         .data.tnf = {
-                            .file = stmt->data.locals.range.pos.file,
-                            .line = stmt->data.locals.range.pos.line,
-                            .col = stmt->data.locals.range.pos.col,
-                            .type_name = key,
+                            .range     = stmt->data.locals.range,
+                            .type_name = name,
                         }
                     });
-                    free(key);
                     break;
                 }
 
                 register_insert(reg, key, (RegisterEntry){
-                    .tag = Reg_Local,
-                    .name = key,
-                    .type = t,
+                    .tag        = Reg_Local,
+                    .name       = NULL,
+                    .type       = t,
                     .data.local = { .type = t, .is_pub = stmt->data.locals.is_pub }
                 });
                 break;
             }
 
-        
+            
             case Stmt_Classes: register_class(stmt, reg, errors); break;
 
             default: break;
@@ -521,3 +475,14 @@ void populate_register(Stmts* body, size_t body_count, Register* reg, CheckerErr
     }    
 }
 
+// Here what this all do:
+// variables like:
+// let a = 10 // convert to int32
+// var i = 3.3 // convert to float
+// const a = some_function() and that function return int32 so a is int32
+// For check_generic() it will do:
+// var a: int32 = 10 or even no "type" just 10 same thing. When do "some_function(a)" and function is Generic, will automaticlly convert the generic to the variable type
+// about resolove_operation it do:
+// var a = ExampleClass // if that class contains @operation("+=") func add()
+// a += 10 // will allow it and will generate add
+// This all just checker and register

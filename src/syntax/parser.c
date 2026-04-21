@@ -1,27 +1,9 @@
 #include "parser.h"
-#include "ast.h"
+#include "lexer.h"
 
 bool range_eq(SourceRange r, const char* str) {
     size_t len = r.end - r.start;
     return strlen(str) == len && memcmp(r.start, str, len) == 0;
-}
-
-Parser parser_new(LexerToken* tokens) {
-    return (Parser){ .cur = tokens };
-}
-
-LexerToken parser_current(Parser* self) {
-    return self->cur[0];
-}
-
-LexerToken parser_advance(Parser* self) {
-    LexerToken tok = self->cur[0];
-    self->cur++;
-    return tok;
-}
-
-LexerToken parser_peek(Parser* self) {
-    return self->cur[1];
 }
 
 
@@ -181,16 +163,14 @@ Exprs parser_expr_primary(Parser* self) {
 
 Exprs parser_function_call(Parser* self, SourceRange fn) {
     parser_advance(self);
-    SourceRange generic_params[16];
-    size_t generic_params_count = 0;
-    Param params[64];
-    size_t params_count = 0;
+    RangeArr generic_params = {0};
+    ParamArr params = {0};
 
     if (parser_current(self).tag == LeftBrackets) {
         parser_advance(self);
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
             if (parser_current(self).tag == Identifier) {
-                generic_params[generic_params_count++] = parser_current(self).range;
+                ARR_PUSH(generic_params, parser_current(self).range);
                 parser_advance(self);
             }
             if (parser_current(self).tag == Commas) parser_advance(self);
@@ -206,7 +186,7 @@ Exprs parser_function_call(Parser* self, SourceRange fn) {
             if (parser_current(self).tag == Colons) parser_advance(self);
     
             p.c_type = parser_type(self).data.custom.name;
-            params[params_count++] = p;
+            ARR_PUSH(params, p);
     
             if (parser_current(self).tag == Commas) parser_advance(self);
         }
@@ -218,10 +198,10 @@ Exprs parser_function_call(Parser* self, SourceRange fn) {
         .tag = Expr_Function,
         .data = { .function_call = {
             .name = fn,
-            .param = params,
-            .param_count = params_count,
-            .generic_params = generic_params,
-            .generic_params_count = generic_params_count
+            .param = params.data,
+            .param_count = params.len,
+            .generic_params = generic_params.data,
+            .generic_params_count = generic_params.len
         }}
     };
 }
@@ -229,10 +209,8 @@ Exprs parser_function_call(Parser* self, SourceRange fn) {
 Exprs parser_method_calls(Parser* self, SourceRange class) {
     parser_advance(self);
     SourceRange function = {0};
-    SourceRange generic_params[16];
-    size_t generic_params_count = 0;
-    Param params[64];
-    size_t params_count = 0;
+    RangeArr generic_params = {0};
+    ParamArr params = {0};
 
     if (parser_current(self).tag == Identifier) {
         function = parser_current(self).range;
@@ -243,7 +221,7 @@ Exprs parser_method_calls(Parser* self, SourceRange class) {
         parser_advance(self);
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
             if (parser_current(self).tag == Identifier) {
-                generic_params[generic_params_count++] = parser_current(self).range;
+                ARR_PUSH(generic_params, parser_current(self).range);
                 parser_advance(self);
             }
             if (parser_current(self).tag == Commas) parser_advance(self);
@@ -261,7 +239,7 @@ Exprs parser_method_calls(Parser* self, SourceRange class) {
             }
             if (parser_current(self).tag == Colons) parser_advance(self);
             p.c_type = parser_type(self).data.custom.name;
-            params[params_count++] = p;
+            ARR_PUSH(params, p);
             if (parser_current(self).tag == Commas) parser_advance(self);
         }
         if (parser_current(self).tag == RightParens) parser_advance(self);
@@ -272,27 +250,25 @@ Exprs parser_method_calls(Parser* self, SourceRange class) {
         .data = { .class_calls = {
             .name = class,
             .function = function,
-            .generic_params = generic_params,
-            .generic_params_count = generic_params_count,
-            .param = params,
-            .param_count = params_count
+            .generic_params = generic_params.data,
+            .generic_params_count = generic_params.len,
+            .param = params.data,
+            .param_count = params.len
         }}
     };
 }
 
 Exprs parser_struct_call(Parser* self, SourceRange str) {
     parser_advance(self);
-    SourceRange generic_params[16];
+    RangeArr generic_params = {0};
     SourceRange function = {0};
-    size_t generic_params_count = 0;
-    Param params[64];
-    size_t params_count = 0;
+    ParamArr params = {0};
 
     if (parser_current(self).tag == LeftBrackets) {
         parser_advance(self);
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
             if (parser_current(self).tag == Identifier) { 
-                generic_params[generic_params_count++] = parser_current(self).range; 
+                ARR_PUSH(generic_params, parser_current(self).range); 
                 parser_advance(self); 
             }
             if (parser_current(self).tag == Commas) parser_advance(self);
@@ -316,7 +292,7 @@ Exprs parser_struct_call(Parser* self, SourceRange str) {
             if (parser_current(self).tag == Colons) parser_advance(self);
 
             p.c_type = parser_type(self).data.custom.name;
-            params[params_count++] = p;
+            ARR_PUSH(params, p);
 
             if (parser_current(self).tag == Commas) parser_advance(self);
         }
@@ -328,27 +304,25 @@ Exprs parser_struct_call(Parser* self, SourceRange str) {
         .data = { .struct_calls = {
             .name = str,
             .function = function,
-            .param = params,
-            .param_count = params_count,
-            .generic_params = generic_params,
-            .generic_params_count = generic_params_count
+            .param = params.data,
+            .param_count = params.len,
+            .generic_params = generic_params.data,
+            .generic_params_count = generic_params.len
         }}
     };
 }
 
 Exprs parser_enums_call(Parser* self, SourceRange en) {
     parser_advance(self);
-    SourceRange generic_params[16];
-    size_t generic_params_count = 0;
-    Param params[64];
-    size_t params_count = 0;
+    RangeArr generic_params = {0};
+    ParamArr params = {0};
     SourceRange field = {0};
 
     if (parser_current(self).tag == LeftBrackets) {
         parser_advance(self);
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
             if (parser_current(self).tag == Identifier) { 
-                generic_params[generic_params_count++] = parser_current(self).range; 
+                ARR_PUSH(generic_params, parser_current(self).range); 
                 parser_advance(self); 
             }
             if (parser_current(self).tag == Commas) parser_advance(self);
@@ -374,7 +348,7 @@ Exprs parser_enums_call(Parser* self, SourceRange en) {
             }
             if (parser_current(self).tag == Colons) parser_advance(self);
             p.c_type = parser_type(self).data.custom.name;
-            params[params_count++] = p;
+            ARR_PUSH(params, p);
             if (parser_current(self).tag == Commas) parser_advance(self);
         }
         if (parser_current(self).tag == RightParens) parser_advance(self);
@@ -385,10 +359,10 @@ Exprs parser_enums_call(Parser* self, SourceRange en) {
         .data = { .enum_calls = {
             .name = en,
             .field = field,
-            .param = params,
-            .param_count = params_count,
-            .generic_params = generic_params,
-            .generic_params_count = generic_params_count
+            .param = params.data,
+            .param_count = params.len,
+            .generic_params = generic_params.data,
+            .generic_params_count = generic_params.len
         }}
     };
 }
@@ -431,12 +405,9 @@ Stmts parser_functions(Parser* self, bool is_const, bool is_unsafe, bool is_pub)
 
     SourceRange n = {0};
     Type return_type = { .tag = Type_Void };
-    Param params[64];
-    size_t params_count = 0;
-    Stmts body[256];
-    size_t body_count = 0;
-    SourceRange generic_params[16];
-    size_t generic_params_count = 0;
+    ParamArr params = {0};
+    StmtsArr body = {0};
+    RangeArr generic_params = {0};
 
     if (parser_current(self).tag == Identifier) {  
         n = parser_current(self).range; 
@@ -447,7 +418,7 @@ Stmts parser_functions(Parser* self, bool is_const, bool is_unsafe, bool is_pub)
         parser_advance(self);
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
             if (parser_current(self).tag == Identifier) { 
-                generic_params[generic_params_count++] = parser_current(self).range; 
+                ARR_PUSH(generic_params, parser_current(self).range); 
                 parser_advance(self); 
             }
             if (parser_current(self).tag == Commas) parser_advance(self);
@@ -465,32 +436,27 @@ Stmts parser_functions(Parser* self, bool is_const, bool is_unsafe, bool is_pub)
         }
         if (parser_current(self).tag == Colons) { parser_advance(self); }
         p.c_type = parser_type(self).data.custom.name;
-        params[params_count++] = p;
+        ARR_PUSH(params, p);
         if (parser_current(self).tag == Commas) parser_advance(self);
     }
 
     if (parser_current(self).tag == RightParens) parser_advance(self);
-    if (parser_current(self).tag == Colons) { 
-        parser_advance(self); 
-        return_type = parser_type(self); 
-    }
+    if (parser_current(self).tag == Colons) {  parser_advance(self);  return_type = parser_type(self); }
 
-    while (parser_current(self).tag != Ends && parser_current(self).tag != EOFs) { 
-        body[body_count++] = parser_stmt(self); 
-    }
+    while (parser_current(self).tag != Ends && parser_current(self).tag != EOFs) {  ARR_PUSH(body, parser_stmt(self));  }
     if (parser_current(self).tag == Ends) parser_advance(self);
 
     return (Stmts){
         .tag = Stmt_Functions,
         .data = { .functions = {
             .name = n,
-            .params = params,
-            .params_count = params_count,
-            .generic_params = generic_params,
-            .generic_params_count = generic_params_count,
+            .params = params.data,
+            .params_count = params.len,
+            .generic_params = generic_params.data,
+            .generic_params_count = generic_params.len,
             .return_type = return_type.data.custom.name,
-            .body = body,
-            .body_count = body_count,
+            .body = body.data,
+            .body_count = body.len,
             .is_unsafe = is_unsafe,
             .is_pub = is_pub,
         }}
@@ -502,21 +468,16 @@ Stmts parser_class(Parser* self, bool is_pub) {
 
     SourceRange n = {0};
     SourceRange parent = {0};
-    Param class_params[64];
-    size_t class_params_count = 0;
-    StructParam fields[64];
-    size_t fields_count = 0;
-    FunctionMethod methods[64];
-    size_t methods_count = 0;
-    SourceRange generic_params[16];
-    size_t generic_params_count = 0;
-    SourceRange traits[16];
-    size_t traits_count = 0;
+    ParamArr class_params = {0};
+    StructParamArr fields = {0};
+    MethodArr methods = {0};
+    RangeArr generic_params = {0};
+    RangeArr traits = {0};
 
     if (parser_current(self).tag == Fors) {
         parser_advance(self);
         while (parser_current(self).tag == Identifier) {
-            traits[traits_count++] = parser_current(self).range;
+            ARR_PUSH(traits, parser_current(self).range);
             parser_advance(self);
             if (parser_current(self).tag == Commas) parser_advance(self);
         }
@@ -531,7 +492,7 @@ Stmts parser_class(Parser* self, bool is_pub) {
         parser_advance(self);
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
             if (parser_current(self).tag == Identifier) { 
-                generic_params[generic_params_count++] = parser_current(self).range; 
+                ARR_PUSH(generic_params, parser_current(self).range); 
                 parser_advance(self); 
             }
             if (parser_current(self).tag == Commas) parser_advance(self);
@@ -547,7 +508,7 @@ Stmts parser_class(Parser* self, bool is_pub) {
             if (parser_current(self).tag == Colons) { parser_advance(self); }
     
             p.c_type = parser_type(self).data.custom.name;
-            class_params[class_params_count++] = p;
+            ARR_PUSH(class_params, p);
 
             if (parser_current(self).tag == Commas) parser_advance(self);
         }
@@ -571,7 +532,7 @@ Stmts parser_class(Parser* self, bool is_pub) {
             if (parser_current(self).tag == Colons) { parser_advance(self); }
 
             f.c_type = parser_type(self).data.custom.name;
-            fields[fields_count++] = f;
+            ARR_PUSH(fields, f);
         } else if (parser_current(self).tag == Functions) {
             Stmts fn = parser_functions(self, false, false, false);
             FunctionMethod m = {0};
@@ -582,7 +543,7 @@ Stmts parser_class(Parser* self, bool is_pub) {
             m.body_count = fn.data.functions.body_count;
             m.is_pub = fn.data.functions.is_pub;
             m.is_unsafe = fn.data.functions.is_unsafe;
-            methods[methods_count++] = m;
+            ARR_PUSH(methods, m);
         } else if (parser_current(self).tag == Ats) { // CHeck for operations example "@operation("+=")"
             parser_advance(self);
             FunctionMethod m = {0};
@@ -602,7 +563,7 @@ Stmts parser_class(Parser* self, bool is_pub) {
             m.is_unsafe     = fn.data.functions.is_unsafe;
             m.has_operation = true;
             m.operation     = op;
-            methods[methods_count++] = m;
+            ARR_PUSH(methods, m);
         } else {
             parser_advance(self);
         }
@@ -613,13 +574,17 @@ Stmts parser_class(Parser* self, bool is_pub) {
         .tag = Stmt_Classes,
         .data = { .classes = {
             .name = n,
-            .class_params = class_params,
-            .class_params_count = class_params_count,
-            .fields = fields,
-            .fields_count = fields_count,
-            .methods = methods,
-            .methods_count = methods_count,
+            .class_params = class_params.data,
+            .class_params_count = class_params.len,
+            .fields = fields.data,
+            .fields_count = fields.len,
+            .methods = methods.data,
+            .methods_count = methods.len,
             .parent = parent,
+            .generic_params = generic_params.data,
+            .generic_params_count = generic_params.len,
+            .traits = traits.data,
+            .traits_count = traits.len,
             .is_pub = is_pub,
             .attached_tag = ClassAttach_None,
             .attached_fields = NULL,
@@ -631,11 +596,9 @@ Stmts parser_class(Parser* self, bool is_pub) {
 Stmts parser_structer(Parser* self, bool is_pub, bool is_unsafe) {
     parser_advance(self);
 
-    SourceRange generic_params[16];
+    RangeArr generic_params = {0};
     SourceRange n = {0};
-    StructParam fields[64];
-    size_t fields_count = 0;
-    size_t generic_params_count = 0;
+    StructParamArr fields = {0};
 
     if (parser_current(self).tag == Identifier) {  
         n = parser_current(self).range; 
@@ -646,7 +609,7 @@ Stmts parser_structer(Parser* self, bool is_pub, bool is_unsafe) {
         parser_advance(self);
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
             if (parser_current(self).tag == Identifier) { 
-                generic_params[generic_params_count++] = parser_current(self).range; 
+                ARR_PUSH(generic_params, parser_current(self).range); 
                 parser_advance(self); 
             }
             if (parser_current(self).tag == Commas) parser_advance(self);
@@ -667,7 +630,7 @@ Stmts parser_structer(Parser* self, bool is_pub, bool is_unsafe) {
                 if (parser_current(self).tag == Equalss) { parser_advance(self); }
 
                 f.c_type = parser_type(self).data.custom.name;
-                fields[fields_count++] = f;
+                ARR_PUSH(fields, f);
 
                 break;
             }
@@ -679,7 +642,7 @@ Stmts parser_structer(Parser* self, bool is_pub, bool is_unsafe) {
                 if (parser_current(self).tag == Equalss) { parser_advance(self); }
 
                 f.c_type = parser_type(self).data.custom.name;
-                fields[fields_count++] = f;
+                ARR_PUSH(fields, f);
 
                 break;
             }
@@ -692,10 +655,10 @@ Stmts parser_structer(Parser* self, bool is_pub, bool is_unsafe) {
         .tag = Stmt_Structs,
         .data = { .structs = {
             .name = n,
-            .generic_params = generic_params,
-            .generic_params_count = generic_params_count,
-            .fields = fields,
-            .fields_count = fields_count,
+            .generic_params = generic_params.data,
+            .generic_params_count = generic_params.len,
+            .fields = fields.data,
+            .fields_count = fields.len,
             .is_pub = is_pub,
         }}
     };
@@ -704,11 +667,9 @@ Stmts parser_structer(Parser* self, bool is_pub, bool is_unsafe) {
 Stmts parser_enums(Parser* self, bool is_pub, bool is_unsafe) {
     parser_advance(self);
 
-    EnumVariant variants[64];
-    size_t variants_count = 0;
-    size_t generic_params_count = 0;
+    VariantArr variants = {0};
     SourceRange n = {0};
-    SourceRange generic_params[16];
+    RangeArr generic_params = {0};
 
     if (parser_current(self).tag == Identifier) {  
         n = parser_current(self).range; 
@@ -719,7 +680,7 @@ Stmts parser_enums(Parser* self, bool is_pub, bool is_unsafe) {
         parser_advance(self);
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
             if (parser_current(self).tag == Identifier) { 
-                generic_params[generic_params_count++] = parser_current(self).range; 
+                ARR_PUSH(generic_params, parser_current(self).range); 
                 parser_advance(self); 
             }
             if (parser_current(self).tag == Commas) parser_advance(self);
@@ -740,8 +701,7 @@ Stmts parser_enums(Parser* self, bool is_pub, bool is_unsafe) {
 
             if (parser_current(self).tag == LeftParens) {
                 parser_advance(self);
-                EnumField fields[64];
-                size_t fields_count = 0;
+                EnumFieldArr fields = {0};
 
                 while (parser_current(self).tag != RightParens && parser_current(self).tag != EOFs) {
                     SourceRange fname = {0};
@@ -750,19 +710,16 @@ Stmts parser_enums(Parser* self, bool is_pub, bool is_unsafe) {
                     if (parser_current(self).tag == Colons) { parser_advance(self); }
 
                     ftype = parser_type(self).data.custom.name;
-                    fields[fields_count++] = (EnumField){ fname, ftype };
+                    ARR_PUSH(fields, ((EnumField){ fname, ftype }));
 
                     if (parser_current(self).tag == Commas) parser_advance(self);
                 }
                 if (parser_current(self).tag == RightParens) parser_advance(self);
 
-                v.fields = malloc(sizeof(*v.fields) * fields_count);
-                if (v.fields) {
-                    memcpy(v.fields, fields, sizeof(*v.fields) * fields_count);
-                    v.fields_count = fields_count;
-                }
+                v.fields = fields.data;
+                v.fields_count = fields.len;
             }
-            variants[variants_count++] = v;
+            ARR_PUSH(variants, v);
         }
         if (parser_current(self).tag == Commas) parser_advance(self);
     }
@@ -772,10 +729,10 @@ Stmts parser_enums(Parser* self, bool is_pub, bool is_unsafe) {
         .tag = Stmt_Enums,
         .data = { .enums = {
             .name  = n,
-            .variants  = variants,
-            .generic_params  = generic_params,
-            .generic_params_count = generic_params_count,
-            .variants_count = variants_count,
+            .variants  = variants.data,
+            .generic_params  = generic_params.data,
+            .generic_params_count = generic_params.len,
+            .variants_count = variants.len,
             .is_pub = is_pub,
         }}
     };
@@ -784,13 +741,10 @@ Stmts parser_enums(Parser* self, bool is_pub, bool is_unsafe) {
 Stmts parser_traits(Parser* self, bool is_pub, bool is_unsafe) {
     parser_advance(self);
 
-    TraitMethod methods[64];
-    size_t methods_count = 0;
-    size_t types_count = 0;
-    size_t generic_params_count = 0;
+    TraitMethodArr methods = {0};
+    RangeArr types = {0};
     SourceRange n = {0};
-    SourceRange generic_params[16];
-    SourceRange types[16];
+    RangeArr generic_params = {0};
 
     if (parser_current(self).tag == Identifier) {  
         n = parser_current(self).range; 
@@ -801,7 +755,7 @@ Stmts parser_traits(Parser* self, bool is_pub, bool is_unsafe) {
         parser_advance(self);
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
             if (parser_current(self).tag == Identifier) { 
-                generic_params[generic_params_count++] = parser_current(self).range; 
+                ARR_PUSH(generic_params, parser_current(self).range); 
                 parser_advance(self); 
             }
             if (parser_current(self).tag == Commas) parser_advance(self);
@@ -816,7 +770,7 @@ Stmts parser_traits(Parser* self, bool is_pub, bool is_unsafe) {
             case Types: {
                 parser_advance(self);
                 if (parser_current(self).tag == Identifier) { 
-                    types[types_count++] = parser_current(self).range; 
+                    ARR_PUSH(types, parser_current(self).range); 
                     parser_advance(self); 
                 }
                 break;
@@ -831,20 +785,21 @@ Stmts parser_traits(Parser* self, bool is_pub, bool is_unsafe) {
                 m.body_count = fn.data.functions.body_count;
                 m.is_pub = fn.data.functions.is_pub;
                 m.return_type = fn.data.functions.return_type;
-                methods[methods_count++] = m;
+                ARR_PUSH(methods, m);
                 break;
             }
             default: parser_advance(self); break;
         }
     }
     if (parser_current(self).tag == Ends) parser_advance(self);
+    free(types.data);
 
     return (Stmts){
         .tag = Stmt_Traits,
         .data = { .traits = {
             .name = n,
-            .methods = methods,
-            .methods_count = methods_count,
+            .methods = methods.data,
+            .methods_count = methods.len,
             .is_pub = is_pub,
         }}
     };
@@ -1165,3 +1120,4 @@ Stmts parser_stmt(Parser* self) {
     }
     return (Stmts){0};
 }
+ 

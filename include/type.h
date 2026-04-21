@@ -1,71 +1,55 @@
+#include "file_manager.h" //for SourceRange
+
 typedef struct {
-    const char* file;
-    size_t line;
-    size_t col;
+    SourceRange range;
     const char* var_name;
     const char* expected_type;
     const char* actual_type;
 } Err_VMV;
 
 typedef struct {
-    const char* file;
-    size_t      line;
-    size_t      col;
+    SourceRange range;
     const char* var_name;
 } Err_VSF;
 
 typedef struct {
-    const char* file;
-    size_t line;
-    size_t col;
+    SourceRange range;
     const char* var_name;
     const char* binding_kind;
 } Err_VNM;
 
 typedef struct {
-    const char* file;
-    size_t line;
-    size_t col;
+    SourceRange range;
     const char* var_name;
     const char* type_name;
 } Err_VPT;
 
 typedef struct {
-    const char* file;
-    size_t line;
-    size_t col;
+    SourceRange range;
     const char* type_name;
 } Err_TNF;
 
 typedef struct {
-    const char* file;
-    size_t line;
-    size_t col;
+    SourceRange range;
     const char* type_name;
     const char* actual_kind;
 } Err_TNC;
 
 typedef struct {
-    const char* file;
-    size_t line;
-    size_t col;
+    SourceRange range;
     const char* class_name;
     const char* op;
 } Err_OUD;
 
 typedef struct {
-    const char* file;
-    size_t line;
-    size_t col;
+    SourceRange range;
     const char* class_name;
     const char* method_name;
     const char* op;
 } Err_OMP;
 
 typedef struct {
-    const char* file;
-    size_t line;
-    size_t col;
+    SourceRange range;
     const char* class_name;
     const char* method_name;
     const char* op;
@@ -74,25 +58,17 @@ typedef struct {
 } Err_OMM;
 
 typedef struct {
-    const char* file;
-    size_t line;
-    size_t col;
+    SourceRange range;
 } Err_LHS;
 
 typedef struct {
-    const char* file;
-    size_t line;
-    size_t col;
+    SourceRange range;
     const char* var_name;
 } Err_CVN;
 
 typedef struct {
-    const char* file;
-    size_t line;
-    size_t col;
+    SourceRange range;
     const char* var_name;
-    size_t first_declared_line;
-    size_t first_declared_col;
 } Err_RDL;
 
 

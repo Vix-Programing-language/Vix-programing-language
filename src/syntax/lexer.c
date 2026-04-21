@@ -61,10 +61,11 @@ void skip_comments(Lexer* self){
 
 
 static void compue_top(Lexer* self) {
-    self->top = (LexerToken){0};
+    self->top = (LexerToken){};
     skip_comments(self);
 
     self->top.range.start = self->cur;
+    self->top.range.file_id=self->file_id;
 
     char c = self->cur[0];
     if (c == '\0') { self->top.tag = EOFs; } 

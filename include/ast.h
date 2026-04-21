@@ -143,6 +143,7 @@ static inline size_t get_line_num(const LineStarts* starts, uintptr_t tgt) {
 typedef struct {
     const char* start;
     const char* end;
+    size_t file_id;
 } SourceRange;
 
 typedef struct {

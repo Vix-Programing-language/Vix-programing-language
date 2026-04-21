@@ -10,6 +10,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct {
+    const char* ptr;
+    size_t      len;
+} StringView;
+
 static inline void* checked_malloc(size_t size) {
     void* ptr = malloc(size);
     assert(ptr != NULL);
