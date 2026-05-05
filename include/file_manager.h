@@ -1,7 +1,7 @@
 #ifndef VIX_FILE_MANAGER_H
 #define VIX_FILE_MANAGER_H
 
-#include "token/ast/ast.h"
+#include "ast.h"
 #include "third-party/khashl.h"
 
 typedef size_t FileId;

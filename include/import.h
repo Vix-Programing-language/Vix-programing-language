@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#define _POSIX_C_SOURCE 200809L
 #ifndef VIX_IMPORT_H
 #define VIX_IMPORT_H
 
@@ -9,6 +10,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static inline char* strndup(const char* s, size_t n) {
+    if (s == NULL) {
+        return NULL;
+    }
+
+    size_t len = 0;
+    while (len < n && s[len] != '\0') {
+        ++len;
+    }
+
+    char *new_str = (char *)malloc(len + 1);
+    if (new_str == NULL) {
+        return NULL;
+    }
+
+    memcpy(new_str, s, len);
+    new_str[len] = '\0';
+    return new_str;
+}
 
 typedef struct {
     const char* ptr;
@@ -91,6 +112,13 @@ static inline void arr__ensure_cap_impl(
         (size_t)(need), \
         sizeof(*(arr).data) \
     ))
+
+#define ERR_PUSH(list, _tag, _range, fmt, ...) do {     \
+    CheckerErr _e = {0};                                 \
+    _e.tag = (_tag);                                   \
+    _e.range = (_range);                                 \
+    checker_err_push((list), _e);                        \
+} while (0)
 
 #define ARR_MAKE_ROOM(arr, extra) \
     ARR_ENSURE_CAP((arr), (arr).len + (size_t)(extra))

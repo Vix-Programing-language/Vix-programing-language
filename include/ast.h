@@ -18,6 +18,8 @@ typedef enum {
     NEqs,
     Equalss,
     Ampersands,
+    Lambdas,
+    Externs,
     Pipes,
     Carets,
     Tildes,
@@ -194,10 +196,13 @@ typedef enum {
     Pattern_LiteralStr,
     Pattern_LiteralBool,
     Pattern_Variant,
+    Pattern_VariantTuple,
+    Pattern_Struct,
+    Pattern_Guard,
     Pattern_Binding,
 } PatternTag;
 
-typedef struct {
+typedef struct Pattern {
     PatternTag tag;
     union {
         int value_int;
@@ -205,7 +210,11 @@ typedef struct {
         bool value_bool;
         struct { char* name; char* inner; } variant;
         char* binding;
+        struct { StringView name; StringView* bindings; size_t bindings_count; } variant_tuple;
+        struct { StringView name; SourceRange* fields; size_t fields_count; } struct_pattern;
+        struct { bool is_var; StringView binding; struct Exprs* expr; struct Pattern* pattern; } guard;
     } data;
+    
 } Pattern;
 
 typedef struct {
@@ -228,7 +237,6 @@ typedef struct {
     size_t body_count;
     bool is_pub;
     bool is_unsafe;
-    bool has_operation;
     Operation operation;
     SourceRange range;
 } FunctionMethod;
@@ -246,7 +254,7 @@ typedef struct {
 
 typedef struct {
     SourceRange name;
-    SourceRange* fields;
+    EnumField* fields; 
     size_t fields_count;
     SourceRange range;
 } EnumVariant;
@@ -346,6 +354,21 @@ typedef struct {
     size_t col;
 } MatchArm;
 
+typedef struct {
+    SourceRange name;
+    SourceRange return_type;
+    Param* params;
+    size_t params_count;
+    SourceRange ffi_type;
+} ExternFunction;
+
+typedef struct {
+    SourceRange abi;
+    ExternFunction* funcs;
+    size_t funcs_count;
+    SourceRange range;
+} ExternBlock;
+
 typedef enum {
     Stmt_Functions,
     Stmt_Classes,
@@ -356,6 +379,7 @@ typedef enum {
     Stmt_Unsafes,
     Stmt_Whiles,
     Stmt_Ifs,
+    Stmt_Externs,
     Stmt_Fors,
     Stmt_Returns,
     Stmt_Vars,
@@ -364,6 +388,7 @@ typedef enum {
     Stmt_Consts,
     Stmt_ExprStmt,
     Stmt_Assigns,
+    Stmt_Continues,
 } StmtsTag;
 
 typedef enum {
@@ -372,26 +397,40 @@ typedef enum {
     ClassAttach_Enum,
 } ClassAttachTag;
 
+#define ARR(T) struct { T* data; size_t len; size_t cap; }
+
+typedef struct { Param* data; size_t len, cap; } ParamArr;
+typedef struct { StructParam* data; size_t len, cap; } StructParamArr;
+typedef struct { Stmts* data; size_t len, cap; } StmtsArr;
+typedef struct { SourceRange* data; size_t len, cap; } RangeArr;
+typedef struct { FunctionMethod* data; size_t len, cap; } MethodArr;
+typedef struct { EnumVariant* data; size_t len, cap; } VariantArr;
+typedef struct { EnumField* data; size_t len, cap; } EnumFieldArr;
+typedef struct { TraitMethod* data; size_t len, cap; } TraitMethodArr;
+typedef struct { MatchArm* data; size_t len, cap; } MatchArmArr;
+
 struct Stmts {
     StmtsTag tag;
     union {
         struct { Exprs target; LexerTokenTag op; Exprs value; SourceRange range; } assigns;
         struct { SourceRange name; SourceRange* generic_params; size_t generic_params_count; Param* params; size_t params_count; SourceRange return_type; Stmts* body; size_t body_count; bool is_pub; bool is_unsafe; SourceRange range; } functions;
-        struct { SourceRange name; SourceRange* generic_params; size_t generic_params_count; Param* class_params; size_t class_params_count; StructParam* fields; size_t fields_count; FunctionMethod* methods; size_t methods_count; SourceRange parent; SourceRange* traits; size_t traits_count; bool is_pub; SourceRange range; bool has_attached; ClassAttachTag attached_tag; StructParam* attached_fields; size_t attached_fields_count; } classes;
+        struct { SourceRange name; SourceRange* generic_params; size_t generic_params_count; Param* class_params; size_t class_params_count; StructParam* fields; size_t fields_count; FunctionMethod* methods; size_t methods_count; SourceRange parent; SourceRange* traits; size_t traits_count; bool is_pub; SourceRange range; ClassAttachTag attached_tag; StructParam* attached_fields; size_t attached_fields_count; } classes;
         struct { SourceRange name; TraitMethod* methods; size_t methods_count; bool is_pub; SourceRange range; } traits;
         struct { SourceRange name; SourceRange* generic_params; size_t generic_params_count; StructParam* fields; size_t fields_count; bool is_pub; SourceRange range; } structs;
         struct { SourceRange name; SourceRange* generic_params; size_t generic_params_count; EnumVariant* variants; size_t variants_count; bool is_pub; SourceRange range; } enums;
         struct { Exprs expr; MatchArm* cases; size_t cases_count; Stmts* default_body; size_t default_body_count; SourceRange range; } matchs;
         struct { Stmts* body; size_t body_count; SourceRange range; } unsafes;
-        struct { Exprs cond; Stmts* body; size_t body_count; Stmts* else_body; size_t else_body_count; SourceRange range; } ifs;
+        struct { Exprs cond; Stmts* body; size_t body_count; Stmts* else_body; size_t else_body_count; SourceRange range; Pattern guard_pattern;} ifs;
         struct { Exprs cond; Stmts* body; size_t body_count; SourceRange range; } whiles;
         struct { SourceRange _var; Exprs iter; Stmts* body; size_t body_count; SourceRange range; } fors;
         struct { Exprs expr; SourceRange range; } returns;
-        struct { SourceRange name; SourceRange c_type; bool has_value; Exprs value; VarMode mode; SourceRange range; } vars;
-        struct { SourceRange name; SourceRange c_type; bool has_value; Exprs value; VarMode mode; SourceRange range; } lets;
+        struct { SourceRange name; SourceRange c_type; Exprs value; VarMode mode; SourceRange range; } vars;
+        struct { SourceRange name; SourceRange c_type; Exprs value; VarMode mode; SourceRange range; } lets;
         struct { SourceRange name; SourceRange c_type; bool is_pub; SourceRange range; } locals;
-        struct { SourceRange name; SourceRange c_type; bool has_value; Exprs value; bool is_pub; SourceRange range; } consts;
+        struct { SourceRange name; SourceRange c_type; Exprs value; bool is_pub; SourceRange range; } consts;
         struct { Exprs expr; } expr_stmt;
+        struct { SourceRange abi; SourceRange ffi; ExternFunction* funcs; size_t funcs_count; bool is_pub; } extern_;
+        struct { ExternBlock block; SourceRange ffi; SourceRange range; } externs;
     } data;
 };
 
@@ -403,16 +442,27 @@ typedef enum {
     Type_Bool,
     Type_Void,
     Type_Array,
+    Type_Ptr,
+    Type_RawPtr,
+    Type_FnPtr,
     Type_Custom,
 } TypeTag;
+
 
 struct Type {
     TypeTag tag;
     union {
         struct { int bits; } int_t;
         struct { int bits; } float_t;
-        struct { Type* inner; } array_t;
+        struct { Type* inner; size_t len; } array_t;
+        struct { Type* inner; } ptr;
+        struct { Type* inner; } raw_ptr;
         struct { SourceRange name; } custom;
+        struct {
+            Type* ret;
+            Type* params;
+            size_t params_count;
+        } fn_ptr;
     } data;
 };
 

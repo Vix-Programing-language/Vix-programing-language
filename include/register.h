@@ -2,7 +2,7 @@
 #define REGISTER_H
 
 #include "third-party/khashl.h"
-#include "token/ast/ast.h"
+#include "ast.h"
 
 typedef enum {
     Reg_Var,
@@ -14,6 +14,7 @@ typedef enum {
     Reg_Struct,
     Reg_Enum,
     Reg_Trait,
+    Reg_Extern,
     Reg_ExprFunctionCall,
     Reg_ExprClassCall,
     Reg_ExprStructCall,
@@ -25,17 +26,27 @@ typedef enum {
     Reg_ExprVar,
 } RegisterEntryTag;
 
+
+typedef struct {
+    uint32_t id;
+    RegisterEntryTag kind;
+} EntityID;
+
+
 typedef struct {
     RegisterEntryTag tag;
     char* name;
     Type  type;
+    EntityID eid;
+    SourceRange decl_range;
+    SourceRange decl_name_range;
     union {
         struct { Type type; VarMode mode; bool is_mut; } var;
         struct { Type type; VarMode mode; } let;
         struct { Type type; bool is_pub; } const_;
         struct { Type type; bool is_pub; } local;
         struct { Param* params; size_t params_count; Type return_type; bool is_pub; bool is_unsafe; } function;
-        struct { StructParam* fields; size_t fields_count; char** traits; size_t traits_count; char* parent; bool is_pub; FunctionMethod* methods; size_t methods_count; bool has_attached; ClassAttachTag attached_tag; StructParam* attached_fields; size_t  attached_fields_count; } class;
+        struct { StructParam* fields; size_t fields_count; char** traits; size_t traits_count; char* parent; bool is_pub; FunctionMethod* methods; size_t methods_count; ClassAttachTag attached_tag; StructParam* attached_fields; size_t  attached_fields_count; } class;
         struct { StructParam* fields; size_t fields_count; bool is_pub; } strct;
         struct { EnumVariant* variants; size_t variants_count; bool is_pub; } enm;
         struct { TraitMethod* methods; size_t methods_count; bool is_pub; } trait;
@@ -47,27 +58,43 @@ typedef struct {
         struct { Type left_type; LexerTokenTag op; Type right_type; Type resolved_type; } expr_binary_op;
         struct { SourceRange name; Type resolved_type; } expr_identifier;
         struct { Type resolved_type; } expr_literal;
+        struct { SourceRange abi; SourceRange ffi; ExternFunction* funcs; size_t funcs_count; bool is_pub; } extern_;
         struct { SourceRange name; Type resolved_type; } expr_var;
     } data;
 } RegisterEntry;
 
-static inline khint_t string_view_hash(StringView view) {
+static inline khint_t string_hash(StringView view) {
     return kh_hash_bytes((int)view.len, (const unsigned char*)view.ptr);
 }
 
-static inline int string_view_eq(StringView a, StringView b) {
+static inline int string_eq(StringView a, StringView b) {
     return a.len == b.len && memcmp(a.ptr, b.ptr, a.len) == 0;
 }
 
-KHASHL_MAP_INIT(KH_LOCAL, RegisterTable, register_table, StringView, RegisterEntry, string_view_hash, string_view_eq)
+KHASHL_MAP_INIT(KH_LOCAL, RegisterTable, register_table, StringView, RegisterEntry, string_hash, string_eq)
+
+KHASHL_MAP_INIT(KH_LOCAL, PendingTable, pending_table, StringView, EntityID, string_hash, string_eq)
+
+typedef struct {
+    uint32_t next_id;
+} IDCounter;
 
 typedef struct Register {
     RegisterTable*  table;
     struct Register* parent;
+    PendingTable* pending;
+    IDCounter* counter;
 } Register;
 
+
 typedef struct {
-    char* type_name;
+    EntityID* ids;
+    size_t count;
+    RegisterEntryTag* kinds;
+} ID;
+
+typedef struct {
+    StringView type_name;
     Type  type;
 } GenericArg;
 
@@ -80,7 +107,7 @@ typedef struct {
     size_t      params_count;
 } GenericInstance;
 
-KHASHL_MAP_INIT(KH_LOCAL, GenericInstanceTable, generic_instance_table, StringView, GenericInstance, string_view_hash, string_view_eq)
+KHASHL_MAP_INIT(KH_LOCAL, GenericInstanceTable, generic_instance_table, StringView, GenericInstance, string_hash, string_eq)
 
 typedef struct {
     GenericInstanceTable* table;

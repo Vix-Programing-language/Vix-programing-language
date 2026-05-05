@@ -1,7 +1,7 @@
 #ifndef VIX_TOKEN_LEXER_H
 #define VIX_TOKEN_LEXER_H
 
-#include "ast/ast.h"
+#include "ast.h"
 #include "file_manager.h"
 
 Lexer lexer_new(FileId file_id, const char* source);

@@ -2,8 +2,29 @@
 #include "import.h"
 #include "parser.h"
 
+typedef struct Parser Parser;
+
 LexerToken parser_current(Parser* self);
 LexerToken parser_advance(Parser* self);
+
+typedef enum {
+    ParseErr_UnexpectedEOF,
+    ParseErr_ExpectedToken,
+    ParseErr_UnexpectedToken,
+    ParseErr_InvalidType,
+    ParseErr_InvalidOperation,
+} ParseErrKind;
+
+typedef struct {
+    ParseErrKind    kind;
+    SourceRange     range;
+    LexerTokenTag   expected;
+    LexerTokenTag   got;
+    const char*     message;
+} ParseError;
+
+typedef ARR(ParseError) ParseErrorArr;
+static ParseErrorArr g_errors = {0};
 
 void parse_error(Parser* self, ParseErrKind kind, const char* msg, LexerTokenTag expected) {
     ParseError e = {
@@ -11,7 +32,7 @@ void parse_error(Parser* self, ParseErrKind kind, const char* msg, LexerTokenTag
         .range = parser_current(self).range,
         .expected = expected,
         .got = parser_current(self).tag,
-        .message  = msg,
+        .message = msg,
     };
 
     ARR_PUSH(g_errors, e);
@@ -19,7 +40,6 @@ void parse_error(Parser* self, ParseErrKind kind, const char* msg, LexerTokenTag
 
 
 void parse_error_eof(Parser* self) { parse_error(self, ParseErr_UnexpectedEOF, "unexpected end of file", EOFs); }
-
 
 bool parser_expect(Parser* self, LexerTokenTag tag) {
     if (parser_current(self).tag == tag) { parser_advance(self); return true; }

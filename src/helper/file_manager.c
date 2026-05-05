@@ -18,6 +18,7 @@ void file_manager_set_line_starts(FileManager* self, FileId id, LineStarts line_
     file->line_starts = line_starts;
 }
 
+
 void file_manager_free(FileManager* self) {
     if (!self) {
         return;

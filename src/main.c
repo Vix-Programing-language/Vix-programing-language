@@ -1,15 +1,16 @@
 #include "import.h"
 #include "file_manager.h"
 #include "register.h"
-#include "token/lexer.h"
-#include "token/parser.h"
-#include "type.h"
+#include "lexer.h"
+#include "error.h"
+#include "parser.h"
+
 char*       read_file_to_string(const char* path);
 LexerToken* lex_all(FileManager* files, FileId file_id, const char* source, size_t* out_count);
 void        print_expression(Exprs expr, int depth);
 void        print_statement(Stmts stmt, int depth);
 
-Register       register_new(Register* parent);
+Register register_new(Register* parent, IDCounter* counter);
 void           register_free(Register* reg);
 void           register_insert(Register* reg, StringView name, RegisterEntry entry);
 RegisterEntry* register_get(Register* reg, StringView name);
@@ -38,6 +39,10 @@ char* read_file_to_string(const char* path) {
     }
     fclose(file);
     return buffer;
+}
+
+static bool expr_exists(Exprs expr) {
+    return expr.data.literals.range.start != NULL;
 }
 
 void print_expression(Exprs expr, int depth) {
@@ -255,7 +260,7 @@ void print_statement(Stmts stmt, int depth) {
             printf("VAR: %.*s\n",
                 (int)(stmt.data.vars.name.end - stmt.data.vars.name.start),
                 stmt.data.vars.name.start);
-            if (stmt.data.vars.has_value)
+            if (expr_exists(stmt.data.vars.value))
                 print_expression(stmt.data.vars.value, depth + 1);
             break;
 
@@ -263,7 +268,7 @@ void print_statement(Stmts stmt, int depth) {
             printf("LET: %.*s\n",
                 (int)(stmt.data.lets.name.end - stmt.data.lets.name.start),
                 stmt.data.lets.name.start);
-            if (stmt.data.lets.has_value)
+            if (expr_exists(stmt.data.lets.value))
                 print_expression(stmt.data.lets.value, depth + 1);
             break;
 
@@ -277,7 +282,7 @@ void print_statement(Stmts stmt, int depth) {
             printf("CONST: %.*s\n",
                 (int)(stmt.data.consts.name.end - stmt.data.consts.name.start),
                 stmt.data.consts.name.start);
-            if (stmt.data.consts.has_value)
+            if (expr_exists(stmt.data.consts.value))
                 print_expression(stmt.data.consts.value, depth + 1);
             break;
 
@@ -298,92 +303,6 @@ void print_statement(Stmts stmt, int depth) {
     }
 }
 
-static void print_error_prefix(const FileManager* files, SourceRange range) {
-    const ManagedFile* file = file_manager_get_const(files, range.file_id);
-    size_t line = 0;
-    size_t col = 0;
-
-    const char* path = file ? file->path : "<unknown>";
-    if (!file_manager_get_location(files, range.file_id, range.start, &line, &col)) {
-        line = 0;
-        col = 0;
-    }
-
-    printf("[%s:%zu:%zu]", path, line, col);
-}
-
-static void report_errors(const FileManager* files, CheckerErrList* errors) {
-    if (errors->count == 0) {
-        printf("No errors.\n");
-        return;
-    }
-    for (size_t i = 0; i < errors->count; i++) {
-        CheckerErr* e = &errors->errors[i];
-        switch (e->tag) {
-            case Err_Tag_RDL:
-                print_error_prefix(files, e->data.rdl.range);
-                printf(" Error: '%s' already declared\n", e->data.rdl.var_name);
-                break;
-            case Err_Tag_VSF:
-                print_error_prefix(files, e->data.vsf.range);
-                printf(" Error: '%s' not found\n", e->data.vsf.var_name);
-                break;
-            case Err_Tag_VMV:
-                print_error_prefix(files, e->data.vmv.range);
-                printf(" Error: '%s' type mismatch - expected %s, got %s\n",
-                    e->data.vmv.var_name, e->data.vmv.expected_type,
-                    e->data.vmv.actual_type);
-                break;
-            case Err_Tag_CVN:
-                print_error_prefix(files, e->data.cvn.range);
-                printf(" Error: const '%s' has no value\n", e->data.cvn.var_name);
-                break;
-            case Err_Tag_TNF:
-                print_error_prefix(files, e->data.tnf.range);
-                printf(" Error: type '%s' not found\n", e->data.tnf.type_name);
-                break;
-            case Err_Tag_TNC:
-                print_error_prefix(files, e->data.tnc.range);
-                printf(" Error: '%s' is a %s, not a class\n",
-                    e->data.tnc.type_name, e->data.tnc.actual_kind);
-                break;
-            case Err_Tag_VNM:
-                print_error_prefix(files, e->data.vnm.range);
-                printf(" Error: '%s' is %s, not a mutable var\n",
-                    e->data.vnm.var_name, e->data.vnm.binding_kind);
-                break;
-            case Err_Tag_VPT:
-                print_error_prefix(files, e->data.vpt.range);
-                printf(" Error: '%s' is primitive type %s, no operator overload\n",
-                    e->data.vpt.var_name, e->data.vpt.type_name);
-                break;
-            case Err_Tag_OUD:
-                print_error_prefix(files, e->data.oud.range);
-                printf(" Error: class '%s' has no overload for operator '%s'\n",
-                    e->data.oud.class_name, e->data.oud.op);
-                break;
-            case Err_Tag_OMP:
-                print_error_prefix(files, e->data.omp.range);
-                printf(" Error: operator '%s' method '%s::%s' has no params\n",
-                    e->data.omp.op, e->data.omp.class_name, e->data.omp.method_name);
-                break;
-            case Err_Tag_OMM:
-                print_error_prefix(files, e->data.omm.range);
-                printf(" Error: operator '%s' method '%s::%s' - expected %s, got %s\n",
-                    e->data.omm.op, e->data.omm.class_name, e->data.omm.method_name,
-                    e->data.omm.expected_type, e->data.omm.actual_type);
-                break;
-            case Err_Tag_LHS:
-                print_error_prefix(files, e->data.lhs.range);
-                printf(" Error: invalid left-hand side in binary op\n");
-                break;
-            default:
-                printf("Unknown error (tag %d)\n", e->tag);
-                break;
-        }
-    }
-    printf("\n%zu error(s) found.\n", errors->count);
-}
 
 int main(int argc, char** argv) {
     if (argc < 3) {
@@ -404,7 +323,7 @@ int main(int argc, char** argv) {
 
     printf("=== RUNNING: %s ===\n", filename);
 
-    Parser parser     = parser_new(lexer_new(file_id,files.slots.data[file_id].source));
+    Parser parser = parser_new(lexer_new(file_id,files.slots.data[file_id].source));
     size_t stmt_count = 0;
     Stmts  program[256];
 
@@ -413,29 +332,43 @@ int main(int argc, char** argv) {
         LexerToken before = parser_current(&parser);
         program[stmt_count++] = parser_stmt(&parser);
         LexerToken after = parser_current(&parser);
-        if (before.tag == after.tag && before.range.start == after.range.start)
-            parser_advance(&parser);
+        if (before.tag == after.tag && before.range.start == after.range.start) parser_advance(&parser);
+
         safety++;
     }
+
+    ARR_PUSH(parser.lexer.line_starts, source + strlen(source) + 1);
+    file_manager_set_line_starts(&files, file_id, parser.lexer.line_starts);
+
+    FileTable table = {0};
+    table.file_count = files.slots.len;
+    table.filenames = calloc(table.file_count, sizeof(*table.filenames));
+    table.sources = calloc(table.file_count, sizeof(*table.sources));
+    table.line_starts = calloc(table.file_count, sizeof(*table.line_starts));
+    for (size_t i = 0; i < table.file_count; i++) {
+        table.filenames[i] = files.slots.data[i].path;
+        table.sources[i] = files.slots.data[i].source;
+        table.line_starts[i] = files.slots.data[i].line_starts;
+    }
+    checker_set_file_table(table);
 
     printf("\n=== AST ===\n");
     for (size_t i = 0; i < stmt_count; i++)
         print_statement(program[i], 0);
 
-    Register       global_reg = register_new(NULL);
-    CheckerErrList errors     = { .errors = NULL, .count = 0, .cap = 0 };
+    IDCounter counter = { .next_id = 1 };
+    Register global_reg = register_new(NULL, &counter);
+    CheckerErrList errors = {0};
 
     register_body(program, stmt_count, &global_reg, &errors);
-
-    printf("\n=== CHECKER ===\n");
-    report_errors(&files, &errors);
-
     register_free(&global_reg);
     free(errors.errors);
+    free((void*)table.filenames);
+    free((void*)table.sources);
+    free(table.line_starts);
     file_manager_free(&files);
     free(source);
 
-    printf("\n=== DONE ===\n");
     return errors.count > 0 ? 1 : 0;
 }
 
