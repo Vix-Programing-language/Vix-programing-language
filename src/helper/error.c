@@ -1,5 +1,6 @@
 #include "ast.h"
 #include "import.h"
+#include "error.h"
 #include "parser.h"
 
 typedef struct Parser Parser;
@@ -7,13 +8,6 @@ typedef struct Parser Parser;
 LexerToken parser_current(Parser* self);
 LexerToken parser_advance(Parser* self);
 
-typedef enum {
-    ParseErr_UnexpectedEOF,
-    ParseErr_ExpectedToken,
-    ParseErr_UnexpectedToken,
-    ParseErr_InvalidType,
-    ParseErr_InvalidOperation,
-} ParseErrKind;
 
 typedef struct {
     ParseErrKind    kind;
@@ -25,17 +19,27 @@ typedef struct {
 
 typedef ARR(ParseError) ParseErrorArr;
 static ParseErrorArr g_errors = {0};
+static CheckerErrList* g_err_list = NULL;
 
+void parser_set_error_list(CheckerErrList* list) { g_err_list = list; }
 void parse_error(Parser* self, ParseErrKind kind, const char* msg, LexerTokenTag expected) {
-    ParseError e = {
-        .kind = kind,
-        .range = parser_current(self).range,
-        .expected = expected,
-        .got = parser_current(self).tag,
-        .message = msg,
+    LexerToken cur = parser_current(self);
+
+    CheckerErr e = {
+        .tag = Err_Tag_Parse,
+        .range = cur.range,
+        .data.parse = {
+            .range    = cur.range,
+            .message  = msg,
+            .expected = (int)expected,
+            .got      = (int)cur.tag,
+            .kind     = (int)kind,
+        },
     };
 
-    ARR_PUSH(g_errors, e);
+    if (g_err_list) {
+        checker_err_push(g_err_list, e);
+    }
 }
 
 

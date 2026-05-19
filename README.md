@@ -36,4 +36,4 @@ Then run your first program in vix!
 Vix has a MIT licence allow you to copy/remake and modify the language. Please do not make a language with exact same name! You can PR the code.
 
 
-Update Alpha 2.2.0 - Release date 4/28/2026. ( Updates are 2 weeks per update )
+Update Alpha 2.2.25 - Release date 5/19/2026. ( Updates are 2 weeks per update )

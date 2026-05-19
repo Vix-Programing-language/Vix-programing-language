@@ -291,12 +291,26 @@ static DiagnosticRenderSpec build_render_spec(CheckerErr err) {
                 spec.related.replacement_to = "var";
             }
             break;
-        }
+        }            
+        case Err_Tag_Parse:
+            spec.primary_range = err.data.parse.range;
+            spec.title = err.data.parse.message ? err.data.parse.message : "syntax error";
+            break;
         case Err_Tag_VMV:
             spec.primary_range = err.data.vmv.range;
+            spec.title = "type mismatch";
+            spec.caret_name = err.data.vmv.var_name;
+            spec.caret_prefix = "has incompatible type";
+            if (err.data.vmv.expected_type.ptr && err.data.vmv.actual_type.ptr) {
+                spec.note_label = "note";
+                spec.note_detail = "expected type and actual type differ";
+            }
             break;
         case Err_Tag_VSF:
             spec.primary_range = err.data.vsf.range;
+            spec.title = "unknown variable";
+            spec.caret_name = err.data.vsf.var_name;
+            spec.caret_prefix = "is not defined";
             break;
         case Err_Tag_VPT:
             spec.primary_range = err.data.vpt.range;
@@ -324,6 +338,9 @@ static DiagnosticRenderSpec build_render_spec(CheckerErr err) {
             break;
         case Err_Tag_RDL:
             spec.primary_range = err.data.rdl.range;
+            spec.title = "duplicate declaration";
+            spec.caret_name = err.data.rdl.var_name;
+            spec.caret_prefix = "is declared more than once";
             break;
         case Err_Tag_NBC:
             spec.primary_range = err.data.nbc.range;
@@ -436,9 +453,9 @@ static DiagnosticRenderSpec build_render_spec(CheckerErr err) {
 }
 
 void checker_err_push(CheckerErrList* list, CheckerErr err) {
-    if (!err.data.vnm.range.start && !err.range.start) return;
-
     DiagnosticRenderSpec spec = build_render_spec(err);
+
+    
     const char* source = get_source(spec.primary_range.file_id);
     report_error_visual(&spec, source);
 

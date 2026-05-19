@@ -215,10 +215,7 @@ static void lexer_words(Lexer* self) {
     else if (strcmp(word, "let")      == 0) self->top.tag = Lets;
     else if (strcmp(word, "var")      == 0) self->top.tag = Vars;
     else if (strcmp(word, "const")    == 0) self->top.tag = Consts;
-    else if (strcmp(word, "local")    == 0) self->top.tag = Locals;
-    else if (strcmp(word, "mut")      == 0) self->top.tag = Muts;
-    else if (strcmp(word, "ref")      == 0) self->top.tag = Refs;
-    else if (strcmp(word, "borrow")   == 0) self->top.tag = Borrows;
+    else if (strcmp(word, "global")    == 0) self->top.tag = Locals;
     else if (strcmp(word, "pub")      == 0) self->top.tag = Publics;
     else if (strcmp(word, "unsafe")   == 0) self->top.tag = Unsafes;
     else if (strcmp(word, "self")     == 0) self->top.tag = Selfs;
@@ -233,7 +230,8 @@ static void lexer_words(Lexer* self) {
     else if (strcmp(word, "false")    == 0) self->top.tag = Falses;
     else if (strcmp(word, "continue") == 0) self->top.tag = Continues;
     else if (strcmp(word, "break")    == 0) self->top.tag = Breaks;
-    else if (strcmp(word, "extern")  == 0) self->top.tag = Externs;
+    else if (strcmp(word, "extern")   == 0) self->top.tag = Externs;
+    else if (strcmp(word, "lambda")   == 0) self->top.tag = Lambdas;
     else if (strcmp(word, "int")      == 0) { self->top.tag = Ints; self->top.data.value_int = 32; }
     else if (strcmp(word, "int8")     == 0) { self->top.tag = Ints; self->top.data.value_int = 8; }
     else if (strcmp(word, "int16")    == 0) { self->top.tag = Ints; self->top.data.value_int = 16; }
@@ -251,6 +249,22 @@ static void lexer_words(Lexer* self) {
 
 static void lexer_numbers(Lexer* self) {
     const char* start = self->cur;
+
+    if (self->cur[0] == '0' && (self->cur[1] == 'x' || self->cur[1] == 'X')) {
+        lexer_advance_char(self);
+        lexer_advance_char(self);
+        while (isxdigit(self->cur[0])) lexer_advance_char(self);
+
+        size_t len = (size_t)(self->cur - start);
+        char* value = checked_malloc(len + 1);
+
+        memcpy(value, start, len);
+        value[len] = '\0';
+        self->top.tag = Ints;
+        self->top.data.value_int = strtoull(value, NULL, 16);
+        free(value);
+        return;
+    }
 
     while (isdigit(self->cur[0])) {
         lexer_advance_char(self);

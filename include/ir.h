@@ -76,7 +76,6 @@ typedef enum {
     IR_Expr_Index,
     IR_Expr_Cast,
     IR_Expr_Deref,
-    IR_Def_Extern,   
 } IR_ExprTag;
 
 struct IR_Expr {
@@ -112,6 +111,7 @@ typedef enum {
     IR_Stmt_Match,
     IR_Stmt_Expr,
     IR_Stmt_SsaTemp,
+    IR_Def_Extern,
 } IR_StmtTag;
 
 struct IR_Stmt {
@@ -160,6 +160,17 @@ typedef struct {
     size_t   defs_count;
     size_t   defs_cap;
 } IR_Module;
+
+typedef IR_Expr* IR_Expr_Ptr;
+
+typedef struct { IR_Stmt*       data; size_t len; size_t cap; } IR_StmtArr;
+typedef struct { IR_Expr_Ptr*   data; size_t len; size_t cap; } IR_ExprPtrArr;
+typedef struct { IR_FieldInit*  data; size_t len; size_t cap; } IR_FieldInitArr;
+typedef struct { IR_MatchArm*   data; size_t len; size_t cap; } IR_MatchArmArr;
+typedef struct { IR_Param*      data; size_t len; size_t cap; } IR_ParamArr;
+typedef struct { IR_FuncDef*    data; size_t len; size_t cap; } IR_FuncDefArr;
+typedef struct { IR_FieldDef*   data; size_t len; size_t cap; } IR_FieldDefArr;
+typedef struct { IR_VariantDef* data; size_t len; size_t cap; } IR_VariantDefArr;
 
 static inline void ir_module_push(IR_Module *mod, IR_Def def) {
     if (mod->defs_count == mod->defs_cap) {

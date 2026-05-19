@@ -3,6 +3,11 @@
 
 #include "third-party/khashl.h"
 #include "ast.h"
+#include "import.h"
+
+typedef struct Register Register;
+
+void register_free(Register* reg);
 
 typedef enum {
     Reg_Var,
@@ -26,12 +31,14 @@ typedef enum {
     Reg_ExprVar,
 } RegisterEntryTag;
 
-
 typedef struct {
     uint32_t id;
     RegisterEntryTag kind;
 } EntityID;
 
+typedef struct {
+    uint32_t next_id;
+} IDCounter;
 
 typedef struct {
     RegisterEntryTag tag;
@@ -45,8 +52,8 @@ typedef struct {
         struct { Type type; VarMode mode; } let;
         struct { Type type; bool is_pub; } const_;
         struct { Type type; bool is_pub; } local;
-        struct { Param* params; size_t params_count; Type return_type; bool is_pub; bool is_unsafe; } function;
-        struct { StructParam* fields; size_t fields_count; char** traits; size_t traits_count; char* parent; bool is_pub; FunctionMethod* methods; size_t methods_count; ClassAttachTag attached_tag; StructParam* attached_fields; size_t  attached_fields_count; } class;
+        struct { Param* params; size_t params_count; Type return_type; bool is_pub; bool is_unsafe; Register* child_reg; } function;
+        struct { StructParam* fields; size_t fields_count; char** traits; size_t traits_count; char* parent; bool is_pub; FunctionMethod* methods; size_t methods_count; ClassAttachTag attached_tag; StructParam* attached_fields; size_t attached_fields_count; } class;
         struct { StructParam* fields; size_t fields_count; bool is_pub; } strct;
         struct { EnumVariant* variants; size_t variants_count; bool is_pub; } enm;
         struct { TraitMethod* methods; size_t methods_count; bool is_pub; } trait;
@@ -72,20 +79,42 @@ static inline int string_eq(StringView a, StringView b) {
 }
 
 KHASHL_MAP_INIT(KH_LOCAL, RegisterTable, register_table, StringView, RegisterEntry, string_hash, string_eq)
-
 KHASHL_MAP_INIT(KH_LOCAL, PendingTable, pending_table, StringView, EntityID, string_hash, string_eq)
 
-typedef struct {
-    uint32_t next_id;
-} IDCounter;
-
 typedef struct Register {
-    RegisterTable*  table;
+    RegisterTable* table;
     struct Register* parent;
     PendingTable* pending;
     IDCounter* counter;
 } Register;
 
+typedef struct {
+    char* func_name;
+    uint32_t func_chunk;
+    Register* body_reg;
+} FuncBody;
+
+// bc arr dosn't support xtra filds i'm going to do this:
+
+typedef struct {
+    FuncBody* data;
+    size_t len;
+    size_t cap;
+    uint32_t func_counter;
+} FuncBodyList;
+
+static inline void func_body_list_push(FuncBodyList* fl, FuncBody fb) {
+    ARR_PUSH(*fl, fb);
+}
+
+static inline void func_body_list_free(FuncBodyList* fl) {
+    for (size_t i = 0; i < fl->len; i++) {
+        free(fl->data[i].func_name);
+        register_free(fl->data[i].body_reg);
+        free(fl->data[i].body_reg);
+    }
+    ARR_FREE(*fl);
+}
 
 typedef struct {
     EntityID* ids;
@@ -95,16 +124,16 @@ typedef struct {
 
 typedef struct {
     StringView type_name;
-    Type  type;
+    Type type;
 } GenericArg;
 
 typedef struct {
     StringView  func_name;
     GenericArg* args;
-    size_t      args_count;
-    Type        return_type;
-    Param*      params;
-    size_t      params_count;
+    size_t args_count;
+    Type return_type;
+    Param* params;
+    size_t params_count;
 } GenericInstance;
 
 KHASHL_MAP_INIT(KH_LOCAL, GenericInstanceTable, generic_instance_table, StringView, GenericInstance, string_hash, string_eq)

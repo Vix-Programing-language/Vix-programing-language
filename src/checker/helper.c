@@ -16,6 +16,17 @@ StringView string(const char* s) {
     return (StringView){ .ptr = s, .len = s ? strlen(s) : 0 };
 }
 
+void range_to_span(SourceRange r, LineStarts* ls, uint32_t* line_start, uint16_t* col_start, uint32_t* line_end, uint16_t* col_end) {
+    size_t ls_idx = get_line_num(ls, (uintptr_t)r.start);
+    size_t le_idx = get_line_num(ls, (uintptr_t)r.end);
+
+    *line_start = (ls_idx != (size_t)-1) ? (uint32_t)ls_idx : 0;
+    *line_end = (le_idx != (size_t)-1) ? (uint32_t)le_idx : 0;
+
+    *col_start = (ls_idx != (size_t)-1) ? (uint16_t)(r.start - ls->data[ls_idx]) : 0;
+    *col_end = (le_idx != (size_t)-1) ? (uint16_t)(r.end - ls->data[le_idx])   : 0;
+}
+
 
 const char* op_tag_to_str(LexerTokenTag tag) {
     switch (tag) {

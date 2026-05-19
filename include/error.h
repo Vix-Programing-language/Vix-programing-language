@@ -156,7 +156,8 @@ typedef enum {
     Err_Tag_GPU,  
     Err_Tag_NCB,  
     Err_Tag_MRT,  
-    Err_Tag_TMI,  
+    Err_Tag_TMI,
+    Err_Tag_Parse,
 } CheckerErrTag;
 
 typedef struct {
@@ -186,7 +187,14 @@ typedef struct {
         struct {
             SourceRange range;
             bool is_always_true;
-        } wlc;  
+        } wlc;
+        struct {
+            SourceRange range;
+            const char* message;
+            int expected;
+            int got;
+            int kind;
+        } parse;
         struct {
             SourceRange range;
             StringView iter_name;

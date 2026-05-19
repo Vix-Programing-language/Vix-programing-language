@@ -1,8 +1,7 @@
 #include "import.h"
 #include "register.h"
-#include "error.h"
 #include "ir.h"
-
+#include "footprint.h"
 
 bool register_expr(Exprs* expr, Register* reg, CheckerErrList* errors);
 void check_expr(Exprs* expr, Register* reg, CheckerErrList* errors);
@@ -21,13 +20,15 @@ void check_consts_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors);
 void check_locals_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors);
 void check_assign_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors);
 void check_return_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors, SourceRange fn_return_type);
+void check_extern_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors);
 void check_function_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors);
 void check_struct_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors);
 void check_enum_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors);
 void check_class_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors);
 void check_trait_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors);
 StringView string_range(SourceRange range);
-static void check_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors, SourceRange fn_return_type, Exprs* parent_cond);
+static void check_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors, SourceRange fn_return_type, Exprs* parent_cond, FuncBodyList* bodies);
+void register_free(Register* reg);
 
 StringView string_range(SourceRange range) {
     return (StringView){
@@ -74,6 +75,9 @@ Register register_new(Register* parent, IDCounter* counter) {
     };
 }
 
+uint32_t register_fresh_id(Register* reg) {
+    return reg->counter->next_id++;
+}
 
 void register_free(Register* reg) {
     if (!reg->table) return;
@@ -144,6 +148,21 @@ Type resolve_type(SourceRange r, Register* reg) {
 }
 
 
+void insert_param(Register* reg, Param* p, Type t) {
+    StringView key = (StringView){
+        .ptr = p->name.start,
+        .len = (size_t)(p->name.end - p->name.start),
+    };
+    register_insert(reg, key, (RegisterEntry){
+        .tag = Reg_Var,
+        .name = NULL,
+        .type = t,
+        .decl_range = p->name,
+        .decl_name_range = p->name,
+        .data.var = { .type = t, .mode = p->mode, .is_mut = false }
+    });
+}
+
 void populate_register(Stmts* body, size_t body_count, Register* reg, CheckerErrList* errors) {
     for (size_t i = 0; i < body_count; i++) {
         Stmts* stmt = &body[i];
@@ -186,6 +205,24 @@ void populate_register(Stmts* body, size_t body_count, Register* reg, CheckerErr
                     .decl_range = stmt->data.vars.range,
                     .decl_name_range = stmt->data.vars.name,
                     .data.var = { .type = t, .mode = stmt->data.vars.mode, .is_mut = true }
+                });
+                break;
+            }
+
+            case Stmt_Functions: {
+                StringView key = string_range(stmt->data.functions.name);
+                Type ret = resolve_type(stmt->data.functions.return_type, reg);
+
+                register_insert(reg, key, (RegisterEntry){
+                    .tag = Reg_Function,
+                    .name = NULL,
+                    .type = ret,
+                    .data.function = {
+                        .return_type = ret,
+                        .params = stmt->data.functions.params,
+                        .params_count = stmt->data.functions.params_count,
+                        .is_pub = stmt->data.functions.is_pub,
+                    }
                 });
                 break;
             }
@@ -361,9 +398,8 @@ Type infer_expr_type(Exprs* expr, Register* reg) {
 
         case Expr_Class_Calls:
         case Expr_Struct_Calls: {
-            SourceRange r = (expr->tag == Expr_Class_Calls)
-                ? expr->data.class_calls.name
-                : expr->data.struct_calls.name;
+            SourceRange r = (expr->tag == Expr_Class_Calls) ? expr->data.class_calls.name : expr->data.struct_calls.name;
+
             return (Type){ .tag = Type_Custom, .data.custom.name = r };
         }
 
@@ -551,11 +587,9 @@ bool register_const(Stmts* stmt, Register* reg, CheckerErrList* errors) {
         return false;
     }
 
-    Type t = (stmt->data.consts.c_type.start != stmt->data.consts.c_type.end) 
-        ? resolve_type(stmt->data.consts.c_type, reg) 
-        : infer_expr_type(&stmt->data.consts.value, reg);
+    Type t = (stmt->data.consts.c_type.start != stmt->data.consts.c_type.end)  ? resolve_type(stmt->data.consts.c_type, reg)  : infer_expr_type(&stmt->data.consts.value, reg);
 
-      register_insert(reg, key, (RegisterEntry){
+        register_insert(reg, key, (RegisterEntry){
           .tag = Reg_Const,
           .name = NULL,
           .type = t,
@@ -670,15 +704,14 @@ bool register_expr(Exprs* expr, Register* reg, CheckerErrList* errors) {
     }
 }
 
-static void check_body(Stmts* body, size_t count, Register* reg, CheckerErrList* errors, SourceRange fn_return_type, Exprs* parent_cond) {
+static void check_body(Stmts* body, size_t count, Register* reg, CheckerErrList* errors, SourceRange fn_return_type, Exprs* parent_cond, FuncBodyList* bodies) {
     populate_register(body, count, reg, errors);
 
-    for (size_t i = 0; i < count; i++) {
-        check_stmt(&body[i], reg, errors, fn_return_type, parent_cond);
-    }
+    for (size_t i = 0; i < count; i++) check_stmt(&body[i], reg, errors, fn_return_type, parent_cond, bodies);
 }
+ 
 
-static void check_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors, SourceRange fn_return_type, Exprs* parent_cond) {
+static void check_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors, SourceRange fn_return_type, Exprs* parent_cond, FuncBodyList* bodies) {
     if (!stmt) return;
 
     switch (stmt->tag) {
@@ -689,48 +722,42 @@ static void check_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors, Sourc
         case Stmt_Assigns: check_assign_stmt(stmt, reg, errors); break;
         case Stmt_Returns: check_return_stmt(stmt, reg, errors, fn_return_type); break;
         case Stmt_ExprStmt: check_expr(&stmt->data.expr_stmt.expr, reg, errors); break;
-
         case Stmt_Ifs: {
             check_if_stmt(stmt, reg, errors, parent_cond);
 
             Register child = register_new(reg, reg->counter);
-            check_body(stmt->data.ifs.body, stmt->data.ifs.body_count, &child, errors, fn_return_type, &stmt->data.ifs.cond);
+            check_body(stmt->data.ifs.body, stmt->data.ifs.body_count, &child, errors, fn_return_type, &stmt->data.ifs.cond, bodies);
             register_free(&child);
 
             if (stmt->data.ifs.else_body_count > 0) {
                 Register else_child = register_new(reg, reg->counter);
-                check_body(stmt->data.ifs.else_body, stmt->data.ifs.else_body_count, &else_child, errors, fn_return_type, parent_cond);
+                check_body(stmt->data.ifs.else_body, stmt->data.ifs.else_body_count, &else_child, errors, fn_return_type, parent_cond, bodies);
                 register_free(&else_child);
             }
             break;
         }
 
+        // Fix while and for to pass bodies too:
         case Stmt_Whiles: {
             check_while_stmt(stmt, reg, errors, parent_cond);
-
             Register child = register_new(reg, reg->counter);
-
-            check_body(stmt->data.whiles.body, stmt->data.whiles.body_count, &child, errors, fn_return_type, &stmt->data.whiles.cond);
+            check_body(stmt->data.whiles.body, stmt->data.whiles.body_count, &child, errors, fn_return_type, &stmt->data.whiles.cond, bodies);
             register_free(&child);
             break;
         }
 
         case Stmt_Fors: {
             check_for_stmt(stmt, reg, errors);
-
             Register child = register_new(reg, reg->counter);
             StringView var_sv = string_range(stmt->data.fors._var);
             Type iter_type = infer_expr_type(&stmt->data.fors.iter, reg);
-
             register_insert(&child, var_sv, (RegisterEntry){
                 .tag = Reg_Var,
                 .name = NULL,
                 .type = iter_type,
                 .data.var = { .type = iter_type, .is_mut = false }
             });
-
-            check_body(stmt->data.fors.body, stmt->data.fors.body_count,
-                       &child, errors, fn_return_type, NULL);
+            check_body(stmt->data.fors.body, stmt->data.fors.body_count, &child, errors, fn_return_type, NULL, bodies);
             register_free(&child);
             break;
         }
@@ -771,25 +798,43 @@ static void check_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors, Sourc
             check_extern_stmt(stmt, reg, errors);
             break;
         }
+        
         case Stmt_Functions: {
             check_function_stmt(stmt, reg, errors);
 
-            Register child = register_new(reg, reg->counter);
+            FuncBody fb = {0};
+            fb.func_chunk = ++bodies->func_counter;
+
+            if (stmt->data.functions.name.start) {
+            size_t name_len = stmt->data.functions.name.end - stmt->data.functions.name.start;
+            fb.func_name = strndup(stmt->data.functions.name.start, name_len);
+        }
+
+            fb.body_reg = malloc(sizeof(Register));
+            *fb.body_reg = register_new(reg, reg->counter);
 
             for (size_t i = 0; i < stmt->data.functions.params_count; i++) {
                 Param* p = &stmt->data.functions.params[i];
                 Type t = resolve_type(p->c_type, reg);
-                register_insert(&child, string_range(p->name), (RegisterEntry){
+                register_insert(fb.body_reg, string_range(p->name), (RegisterEntry){
                     .tag = Reg_Var,
                     .name = NULL,
                     .type = t,
                     .data.var = { .type = t, .is_mut = false }
                 });
             }
-            check_body(stmt->data.functions.body, stmt->data.functions.body_count, &child, errors, stmt->data.functions.return_type, NULL);
-            register_free(&child);
+
+            check_body(stmt->data.functions.body, stmt->data.functions.body_count,
+                    fb.body_reg, errors, stmt->data.functions.return_type, NULL, bodies);
+
+            ARR_PUSH(*bodies, fb);
+            size_t idx = bodies->len - 1;
+            RegisterEntry* fn_entry = register_get(reg, string_range(stmt->data.functions.name));
+            if (fn_entry) fn_entry->data.function.child_reg = bodies->data[idx].body_reg;
+
             break;
         }
+
 
         case Stmt_Structs: check_struct_stmt(stmt, reg, errors); break;
         case Stmt_Enums:   check_enum_stmt(stmt, reg, errors);   break;
@@ -800,7 +845,7 @@ static void check_stmt(Stmts* stmt, Register* reg, CheckerErrList* errors, Sourc
     }
 }
 
-bool register_body(Stmts* body, size_t count, Register* reg, CheckerErrList* errors) {
+FuncBodyList register_body(Stmts* body, size_t count, Register* reg, CheckerErrList* errors) {
     for (size_t i = 0; i < count; i++) {
         Stmts* s = &body[i];
         switch (s->tag) {
@@ -906,8 +951,10 @@ bool register_body(Stmts* body, size_t count, Register* reg, CheckerErrList* err
     
 
     SourceRange empty = {0};
-    check_body(body, count, reg, errors, empty, NULL);
-    return true;
+    FuncBodyList bodies = {0};
+
+    check_body(body, count, reg, errors, empty, NULL, &bodies);
+    return bodies;
 }
 
 void check_expr(Exprs* expr, Register* reg, CheckerErrList* errors) {
