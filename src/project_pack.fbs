@@ -1,0 +1,21 @@
+// project_pack.fbs
+// Schema for the .pack project-metadata file written by pack.c
+//
+// Wire layout (after flatcc builder serialisation):
+//   [flatbuffers data]  ++ [uint32 crc32]
+//
+// The CRC covers everything before the trailing 4 bytes, same as before.
+
+namespace VixPack;
+
+table ProjectPackMeta {
+    source_hash : uint64;
+    name : string;
+    root : string;
+    footprint_link : string;
+    ownership_flags : uint8;
+}
+
+root_type ProjectPackMeta;
+file_identifier "VMTA";   // 4 byte magic embedded by flatcc
+file_extension  "pack";

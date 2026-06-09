@@ -1,10 +1,9 @@
 #pragma once
 #include <stddef.h>
 #include <io.h>
-
 #ifndef _SSIZE_T_DEFINED
 #define _SSIZE_T_DEFINED
-typedef long ssize_t;
+typedef long long ssize_t;
 #endif
 
 struct iovec {

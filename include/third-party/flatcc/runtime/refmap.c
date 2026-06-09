@@ -13,10 +13,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "flatcc/flatcc_rtconfig.h"
-#include "flatcc/flatcc_refmap.h"
-#include "flatcc/flatcc_alloc.h"
-#include "flatcc/flatcc_assert.h"
+#include "flatcc_rtconfig.h"
+#include "flatcc_refmap.h"
+#include "flatcc_alloc.h"
+#include "flatcc_assert.h"
 
 #define _flatcc_refmap_calloc FLATCC_CALLOC
 #define _flatcc_refmap_free FLATCC_FREE

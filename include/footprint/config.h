@@ -3,18 +3,18 @@
 #include "dir.h"
 
 typedef struct {
-    char    *name;
-    char    *description;
-    char    *license;
-    StrArr   authors;
+    char *name;
+    char *description;
+    char *license;
+    StrArr authors;
 } ConfigInfo;
 
 typedef struct {
-    char    *version;
-    char    *link;
-    StrArr   features;
-    bool     is_builtin;
-    char    *key;
+    char *version;
+    char *link;
+    StrArr features;
+    bool is_builtin;
+    char *key;
 } ConfigDep;
 
 typedef ARR(ConfigDep) ConfigDepArr;
@@ -41,8 +41,8 @@ typedef struct {
 } ConfigCompilerRef;
 
 typedef struct {
-    char    *build;
-    char    *test;
+    char *build;
+    char *test;
 } ConfigFlags;
 
 typedef enum { BIN_EXE, BIN_DLL, BIN_STATIC } ConfigBinKind;
@@ -53,15 +53,15 @@ typedef struct {
 } ConfigBackend;
 
 typedef struct {
-    char            *version;
-    uint8_t          optimization;
-    ConfigMemory     memory;
-    char            *target;
-    bool             strict;
+    char *version;
+    uint8_t optimization;
+    ConfigMemory memory;
+    char *target;
+    bool strict;
     ConfigCompilerRef compiler_ref;
-    ConfigFlags      flags;
-    ConfigBinKind    bin;
-    ConfigBackend    backend;
+    ConfigFlags flags;
+    ConfigBinKind bin;
+    ConfigBackend backend;
 } ConfigCompiler;
 
 typedef struct {
@@ -69,19 +69,19 @@ typedef struct {
 } ConfigWorkspace;
 
 typedef struct {
-    char    *size;       // "10mb"
+    char *size;
     uint64_t low;
     uint64_t max;
-    char    *file;       // "40kb"
-    char    *link;
+    char *file;
+    char *link;
 } ConfigFootprint;
 
 typedef struct {
-    bool             valid;
-    ConfigInfo       info;
-    ConfigLibrary    library;
-    ConfigProfile    profile;
-    ConfigCompiler   compiler;
+    bool valid;
+    ConfigInfo info;
+    ConfigLibrary library;
+    ConfigProfile profile;
+    ConfigCompiler compiler;
     ConfigWorkspace  workspace;
     ConfigFootprint  footprint;
 } Config;

@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-#include "  punaligned.h"
+#include "punaligned.h"
 
 #define FLATCC_ALLOW_UNALIGNED_ACCESS PORTABLE_UNALIGNED_ACCESS
 

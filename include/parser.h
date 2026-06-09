@@ -4,13 +4,28 @@
 #include "ast.h"
 #include "lexer.h"
 
+
 typedef struct Parser {
     Lexer lexer;
+    bool atomic_imported;
+    bool has_peek;
+    LexerToken peek_tok;
 } Parser;
 
 static inline Parser parser_new(Lexer lex) { return (Parser){.lexer = lex}; }
 
 static inline LexerToken parser_current(Parser* self) { return lexer_peek(&self->lexer); }
+
+static inline LexerToken parser_peek_next(Parser* self) {
+    if (!self->has_peek) {
+        Lexer saved = self->lexer;
+        lexer_advance(&self->lexer);
+        self->peek_tok = lexer_peek(&self->lexer);
+        self->lexer = saved;
+        self->has_peek = true;
+    }
+    return self->peek_tok;
+}
 
 static inline LexerToken parser_advance(Parser* self) {
     LexerToken tok = lexer_peek(&self->lexer);
@@ -19,5 +34,4 @@ static inline LexerToken parser_advance(Parser* self) {
 }
 Stmts parser_stmt(Parser* self);
 Exprs parser_expr(Parser* self);
-
 #endif

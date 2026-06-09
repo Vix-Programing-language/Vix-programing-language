@@ -216,7 +216,7 @@ static void lexer_words(Lexer* self) {
     else if (strcmp(word, "var")      == 0) self->top.tag = Vars;
     else if (strcmp(word, "const")    == 0) self->top.tag = Consts;
     else if (strcmp(word, "global")    == 0) self->top.tag = Locals;
-    else if (strcmp(word, "pub")      == 0) self->top.tag = Publics;
+    else if (strcmp(word, "public")      == 0) self->top.tag = Publics;
     else if (strcmp(word, "unsafe")   == 0) self->top.tag = Unsafes;
     else if (strcmp(word, "self")     == 0) self->top.tag = Selfs;
     else if (strcmp(word, "as")       == 0) self->top.tag = Ass;
@@ -232,16 +232,52 @@ static void lexer_words(Lexer* self) {
     else if (strcmp(word, "break")    == 0) self->top.tag = Breaks;
     else if (strcmp(word, "extern")   == 0) self->top.tag = Externs;
     else if (strcmp(word, "lambda")   == 0) self->top.tag = Lambdas;
-    else if (strcmp(word, "int")      == 0) { self->top.tag = Ints; self->top.data.value_int = 32; }
-    else if (strcmp(word, "int8")     == 0) { self->top.tag = Ints; self->top.data.value_int = 8; }
-    else if (strcmp(word, "int16")    == 0) { self->top.tag = Ints; self->top.data.value_int = 16; }
-    else if (strcmp(word, "int32")    == 0) { self->top.tag = Ints; self->top.data.value_int = 32; }
-    else if (strcmp(word, "int64")    == 0) { self->top.tag = Ints; self->top.data.value_int = 64; }
+    else if (strcmp(word, "Atomic") == 0) self->top.tag =   Atomics;
+    else if (strcmp(word, "module") == 0) self->top.tag =   Modules;
+    else if (strcmp(word, "import") == 0) self->top.tag =   Imports;
+    else if (strcmp(word, "from") == 0) self->top.tag   =   Froms;
+    else if (strcmp(word, "int")    == 0) { self->top.tag = Ints; self->top.data.value_int = 32; self->top.is_unsigned = false; }
+    else if (strcmp(word, "int8")   == 0) { self->top.tag = Ints; self->top.data.value_int = 8;  self->top.is_unsigned = false; }
+    else if (strcmp(word, "int16")  == 0) { self->top.tag = Ints; self->top.data.value_int = 16; self->top.is_unsigned = false; }
+    else if (strcmp(word, "int32")  == 0) { self->top.tag = Ints; self->top.data.value_int = 32; self->top.is_unsigned = false; }
+    else if (strcmp(word, "int64")  == 0) { self->top.tag = Ints; self->top.data.value_int = 64; self->top.is_unsigned = false; }
+    else if (strcmp(word, "uint")   == 0) { self->top.tag = Ints; self->top.data.value_int = 32; self->top.is_unsigned = true;  }
+    else if (strcmp(word, "uint8")  == 0) { self->top.tag = Ints; self->top.data.value_int = 8;  self->top.is_unsigned = true;  }
+    else if (strcmp(word, "uint16") == 0) { self->top.tag = Ints; self->top.data.value_int = 16; self->top.is_unsigned = true;  }
+    else if (strcmp(word, "uint32") == 0) { self->top.tag = Ints; self->top.data.value_int = 32; self->top.is_unsigned = true;  }
+    else if (strcmp(word, "uint64") == 0) { self->top.tag = Ints; self->top.data.value_int = 64; self->top.is_unsigned = true;  }
     else if (strcmp(word, "float")    == 0) { self->top.tag = Floats; self->top.data.value_int = 32; }
     else if (strcmp(word, "float32")  == 0) { self->top.tag = Floats; self->top.data.value_int = 32; }
     else if (strcmp(word, "float64")  == 0) { self->top.tag = Floats; self->top.data.value_int = 64; }
     else if (strcmp(word, "char")     == 0) { self->top.tag = Chars; self->top.data.value_int = 8; }
-    else if (strcmp(word, "string")   == 0) { self->top.tag = Strings; self->top.data.value_int = 0; }
+    else if (strcmp(word, "str")   == 0) { self->top.tag = Strings; self->top.data.value_int = 0; }
+    else if (strcmp(word, "bool")   == 0) self->top.tag = Bools; 
+    else if (strcmp(word, "null") == 0) self->top.tag = Nulls;
+    else if (strcmp(word, "void") == 0) self->top.tag = Voids;
+    else if (strcmp(word, "...") == 0) self->top.tag = Ellipsis;
+    else if (strcmp(word, "Relaxed") == 0) { self->top.tag = Orderings; self->top.data.value_int = Ordering_Relaxed; }
+    else if (strcmp(word, "Acquire") == 0) { self->top.tag = Orderings; self->top.data.value_int = Ordering_Acquire; }
+    else if (strcmp(word, "Release") == 0) { self->top.tag = Orderings; self->top.data.value_int = Ordering_Release; }
+    else if (strcmp(word, "AcqRel")  == 0) { self->top.tag = Orderings; self->top.data.value_int = Ordering_AcqRel;  }
+    else if (strcmp(word, "SeqCst")  == 0) { self->top.tag = Orderings; self->top.data.value_int = Ordering_SeqCst;  }
+
+    // build in functions:
+    else if (strcmp(word, "size_of") == 0) self->top.tag = Fn_Sizes;
+    else if (strcmp(word, "type_of") == 0) self->top.tag = Fn_Types;
+    else if (strcmp(word, "align_of") == 0) self->top.tag = Fn_Align;
+
+    else if (strcmp(word, "load")             == 0) { self->top.tag = Orderings; self->top.data.value_int = AtomicOp_Load;            }
+    else if (strcmp(word, "store")            == 0) { self->top.tag = Orderings; self->top.data.value_int = AtomicOp_Store;           }
+    else if (strcmp(word, "swap")             == 0) { self->top.tag = Orderings; self->top.data.value_int = AtomicOp_Swap;            }
+    else if (strcmp(word, "compare_exchange") == 0) { self->top.tag = Orderings; self->top.data.value_int = AtomicOp_CompareExchange; }
+    else if (strcmp(word, "fetch_add")        == 0) { self->top.tag = Orderings; self->top.data.value_int = AtomicOp_FetchAdd;        }
+    else if (strcmp(word, "fetch_sub")        == 0) { self->top.tag = Orderings; self->top.data.value_int = AtomicOp_FetchSub;        }
+    else if (strcmp(word, "fetch_and")        == 0) { self->top.tag = Orderings; self->top.data.value_int = AtomicOp_FetchAnd;        }
+    else if (strcmp(word, "fetch_or")         == 0) { self->top.tag = Orderings; self->top.data.value_int = AtomicOp_FetchOr;         }
+    else if (strcmp(word, "fetch_xor")        == 0) { self->top.tag = Orderings; self->top.data.value_int = AtomicOp_FetchXor;        }
+    else if (strcmp(word, "fetch_nand")       == 0) { self->top.tag = Orderings; self->top.data.value_int = AtomicOp_FetchNand;       }
+    else if (strcmp(word, "fetch_max")        == 0) { self->top.tag = Orderings; self->top.data.value_int = AtomicOp_FetchMax;        }
+    else if (strcmp(word, "fetch_min")        == 0) { self->top.tag = Orderings; self->top.data.value_int = AtomicOp_FetchMin;        }
     else { self->top.tag = Identifier; self->top.data.s = word; return; }
 
     free(word);
@@ -250,14 +286,13 @@ static void lexer_words(Lexer* self) {
 static void lexer_numbers(Lexer* self) {
     const char* start = self->cur;
 
-    if (self->cur[0] == '0' && (self->cur[1] == 'x' || self->cur[1] == 'X')) {
+if (self->cur[0] == '0' && (self->cur[1] == 'x' || self->cur[1] == 'X')) {
         lexer_advance_char(self);
         lexer_advance_char(self);
         while (isxdigit(self->cur[0])) lexer_advance_char(self);
 
         size_t len = (size_t)(self->cur - start);
         char* value = checked_malloc(len + 1);
-
         memcpy(value, start, len);
         value[len] = '\0';
         self->top.tag = Ints;
@@ -265,6 +300,37 @@ static void lexer_numbers(Lexer* self) {
         free(value);
         return;
     }
+
+    if (self->cur[0] == '0' && (self->cur[1] == 'b' || self->cur[1] == 'B')) {
+        lexer_advance_char(self);
+        lexer_advance_char(self);
+        while (self->cur[0] == '0' || self->cur[0] == '1') lexer_advance_char(self);
+
+        size_t len = (size_t)(self->cur - start);
+        char* value = checked_malloc(len + 1);
+        memcpy(value, start, len);
+        value[len] = '\0';
+        self->top.tag = Ints;
+        self->top.data.value_int = strtoull(value + 2, NULL, 2);
+        free(value);
+        return;
+    }
+
+    if (self->cur[0] == '0' && (self->cur[1] == 'o' || self->cur[1] == 'O')) {
+        lexer_advance_char(self);
+        lexer_advance_char(self);
+        while (self->cur[0] >= '0' && self->cur[0] <= '7') lexer_advance_char(self);
+
+        size_t len = (size_t)(self->cur - start);
+        char* value = checked_malloc(len + 1);
+        memcpy(value, start, len);
+        value[len] = '\0';
+        self->top.tag = Ints;
+        self->top.data.value_int = strtoull(value + 2, NULL, 8);
+        free(value);
+        return;
+    }
+
 
     while (isdigit(self->cur[0])) {
         lexer_advance_char(self);

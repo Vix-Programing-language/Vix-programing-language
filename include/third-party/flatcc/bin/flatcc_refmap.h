@@ -52,7 +52,7 @@ extern "C" {
 
 #include "flatcc_types.h"
 
-#ifndef FLATCC_REFMAP_MIN_BUCKETS
+#ifndef FLATCC_REFMAP_MIN_BUCKETSd
 /* 8 buckets gives us 5 useful initial entries with a load factor of 0.7 */
 #define FLATCC_REFMAP_MIN_BUCKETS 8
 #endif

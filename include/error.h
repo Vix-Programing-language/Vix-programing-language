@@ -1,3 +1,6 @@
+#ifndef ERROR_H
+#define ERROR_H
+
 #include "ast.h"
 #include "file_manager.h"
 
@@ -158,6 +161,9 @@ typedef enum {
     Err_Tag_MRT,  
     Err_Tag_TMI,
     Err_Tag_Parse,
+    Err_Tag_SMF,
+    Err_Tag_SOC,
+    Err_Tag_UKT,
 } CheckerErrTag;
 
 typedef struct {
@@ -207,7 +213,11 @@ typedef struct {
             SourceRange range;
             StringView iter_name;
             StringView iter_type;
-        } nit;  
+        } nit;
+        struct { 
+            SourceRange range; 
+            StringView var_name; 
+        } ukt;
         struct {
             SourceRange range;
             StringView var_name;
@@ -275,6 +285,16 @@ typedef struct {
             StringView method_name;
         } tmi;
 
+        struct {
+            SourceRange range;
+            StringView member_name;
+            StringView class_name;
+        } smf;
+
+        struct {
+            SourceRange range;
+        } soc;
+
         struct { SourceRange range; StringView expected_type; StringView actual_type; } ptm;
         struct { SourceRange range; StringView field_name; StringView type_name; } sff;
         struct { SourceRange range; StringView variant_name; size_t expected_count; size_t actual_count; } wfc;
@@ -302,3 +322,5 @@ typedef struct {
 
 void checker_err_push(CheckerErrList* list, CheckerErr err);
 void checker_set_file_table(FileTable table);
+
+#endif

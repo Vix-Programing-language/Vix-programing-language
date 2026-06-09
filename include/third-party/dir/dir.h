@@ -36,6 +36,10 @@ static bool file_exists(const char *path) {
 #endif
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 DirErr dir_read_file(const char* path, FileData* out_data);
 DirErr dir_write_file(const char* path, const void* data, size_t size);
 DirErr dir_new_folder(const char* path);
@@ -56,6 +60,10 @@ void dir_path_ext(const char* path, char* out, size_t cap);
 char* dir_build_path(const char* first, ...);
 char* dir_get_env(const char* name);
 char* dir_hidden_path(const char* dir_path, const char* filename);
+
+#ifdef __cplusplus
+}
+#endif
 
 #ifdef DIR_IMPLEMENTATION
 

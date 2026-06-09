@@ -16,8 +16,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "flatcc/flatcc_builder.h"
-#include "flatcc/flatcc_emitter.h"
+#include "flatcc_builder.h"
+#include "flatcc_emitter.h"
 
 /*
  * `check` is designed to handle incorrect use errors that can be

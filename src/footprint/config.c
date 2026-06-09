@@ -4,6 +4,7 @@
 #include "toml.h"
 #include "dir.h"
 #include "bytes.h"
+#include "import.h"
 
 static uint64_t read_u64_or_inf(toml_table_t *tbl, const char *key) {
     toml_datum_t d = toml_int_in(tbl, key); if (d.ok) return (uint64_t)d.u.i;
@@ -239,12 +240,10 @@ void config_free(Config *c) {
     free(c->compiler.target);
     free_str_arr(&c->workspace.members);
 
-    // footprint
     free(c->footprint.size);
     free(c->footprint.file);
     free(c->footprint.link);
 
-    // compiler new fields
     free(c->compiler.compiler_ref.dir);
     free(c->compiler.compiler_ref.env);
     free(c->compiler.backend.compiler);

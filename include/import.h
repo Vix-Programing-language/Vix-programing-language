@@ -19,22 +19,25 @@
 #include <sys/stat.h>
 
 #ifdef _WIN32
-#include <io.h>
+#include <io.h>t
 #include <process.h>
 #include <windows.h>
 #include <direct.h>
-#include "sys/uio.h"
+#include "uio.h"
+#define strcasecmp  _stricmp
+#define strncasecmp _strnicmp
+
 
 #define PATH_SEP "\\"
 #define VIX_MKDIR(path) _mkdir(path)
 
-#ifndef ssize_t
+#ifndef _SSIZE_T_DEFINED
+#define _SSIZE_T_DEFINED
     typedef long long ssize_t;
 #endif
 
 #define open(path, flags, ...)  _open((path), (flags)|0x8000, ##__VA_ARGS__)
 #define read(fd, buf, n)        _read((fd), (buf), (unsigned int)(n))
-#define write(fd, buf, n)       _write((fd), (buf), (unsigned int)(n))
 #define close(fd)               _close(fd)
 #define lseek(fd, off, whence)  _lseeki64((fd), (off), (whence))
 
@@ -54,6 +57,34 @@ typedef struct {
 } StringView;
 
 #define SV(s) (StringView){(s), strlen(s)}
+#define SR(r) (sr_cstr((r), ([]() -> char* { static char _b[256] = {}; memset(_b,0,256); return _b; }()), 256))
+#define CG_LOWER_ARGS(args_arr, src_args, src_count, cg) \
+    do { \
+        ARR_MAKE_ROOM(args_arr, src_count); \
+        for (size_t _i = 0; _i < (src_count); _i++) \
+            ARR_PUSH(args_arr, cg_expr(cg, (src_args)[_i])); \
+    } while (0)
+#define CG_UNREACHABLE(msg, eid, name_range) \
+do { \
+    fprintf(stderr, "\033[31m[!] Unexpected Codegen error! " msg "\033[0m\n"); \
+    fprintf(stderr, "    -> eid: %u (file: %u)\n", (eid).id, (eid).file_id); \
+    fprintf(stderr, "    -> name: %.*s\n", \
+        (int)((name_range).end - (name_range).start), (name_range).start); \
+} while (0)
+
+#define CG_UNREACHABLE_MSG(msg) \
+do { \
+    EntityID _z = {0}; \
+    SourceRange _e = {0}; \
+    CG_UNREACHABLE(msg, _z, _e); \
+} while (0)
+
+#define ATOMIC_ARG(i) \
+    ((i) < s->data.atomic_op.args_count && s->data.atomic_op.args[(i)] \
+        ? cg_expr(cg, s->data.atomic_op.args[(i)]) \
+        : LLVMConstNull(LLVMInt32TypeInContext(cg->ctx)))
+
+        
 
 static inline void* checked_malloc(size_t size) {
     void* ptr = malloc(size);
@@ -65,6 +96,12 @@ static inline void* checked_realloc(void* ptr, size_t size) {
     void* new_ptr = realloc(ptr, size);
     assert(new_ptr != NULL);
     return new_ptr;
+}
+
+static void* memdup(const void* src, size_t n) {
+    void* p = malloc(n);
+    if (p) memcpy(p, src, n);
+    return p;
 }
 
 #ifndef HAVE_STRNDUP
@@ -79,7 +116,6 @@ static inline char* strndup(const char* s, size_t n) {
     return new_str;
 }
 #endif
-
 
 #define ARR(T) struct { T* data; size_t len; size_t cap; }
 

@@ -291,7 +291,15 @@ static DiagnosticRenderSpec build_render_spec(CheckerErr err) {
                 spec.related.replacement_to = "var";
             }
             break;
-        }            
+        }         
+        case Err_Tag_UKT:
+            spec.primary_range = err.data.ukt.range;
+            spec.title = "cannot infer type";
+            spec.caret_name = err.data.ukt.var_name;
+            spec.caret_prefix = "type could not be inferred";
+            spec.note_label = "note";
+            spec.note_detail = "add an explicit type annotation";
+            break;           
         case Err_Tag_Parse:
             spec.primary_range = err.data.parse.range;
             spec.title = err.data.parse.message ? err.data.parse.message : "syntax error";
@@ -407,12 +415,20 @@ static DiagnosticRenderSpec build_render_spec(CheckerErr err) {
             break;
         case Err_Tag_ULV:
             spec.primary_range = err.data.ulv.range;
+            spec.title = "unused variable";
+            spec.caret_name = err.data.ulv.var_name;
+            spec.caret_prefix = "is never used";
             break;
         case Err_Tag_DFN:
             spec.primary_range = err.data.dfn.range;
             break;
         case Err_Tag_UFT:
             spec.primary_range = err.data.uft.range;
+            spec.title = "unknown field type";
+            spec.caret_name = err.data.uft.field_name;
+            spec.caret_prefix = "has unknown type";
+            spec.note_label = "note";
+            spec.note_detail = "the type of this field could not be resolved";
             break;
         case Err_Tag_VFT:
             spec.primary_range = err.data.vft.range;
@@ -445,6 +461,7 @@ static DiagnosticRenderSpec build_render_spec(CheckerErr err) {
             spec.primary_range = err.data.tmi.range;
             break;
         default:
+            printf("DEBUG: unhandled error tag = %d\n", (int)err.tag);
             spec.primary_range = err.range;
             break;
     }
