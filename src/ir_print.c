@@ -2,7 +2,6 @@
 #include "ast.h"
 #include "register.h"
 #include "ir.h"
-/* ── helpers ─────────────────────────────────────────────────── */
 
 static void indent(int d) { for (int i = 0; i < d; i++) printf("  "); }
 
@@ -29,7 +28,6 @@ static void print_ir_type(Type t) {
     }
 }
 
-/* ── expr ─────────────────────────────────────────────────────── */
 
 static void print_ir_expr(IR_Expr *e, int d) {
     if (!e) { indent(d); printf("<null-expr>\n"); return; }
@@ -257,6 +255,9 @@ static void print_ir_funcdef(IR_FuncDef *fn, int d) {
     if (fn->is_pub)    printf(" [pub]");
     if (fn->is_unsafe) printf(" [unsafe]");
     printf("\n");
+
+    printf("body count in printer: %d\n", fn->body_count);
+
     print_ir_stmts(fn->body, fn->body_count, d + 1);
 }
 

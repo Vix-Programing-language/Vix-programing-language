@@ -19,7 +19,7 @@
 #include <sys/stat.h>
 
 #ifdef _WIN32
-#include <io.h>t
+#include <io.h>
 #include <process.h>
 #include <windows.h>
 #include <direct.h>
@@ -55,6 +55,7 @@ typedef struct {
     const char* ptr;
     size_t      len;
 } StringView;
+
 
 #define SV(s) (StringView){(s), strlen(s)}
 #define SR(r) (sr_cstr((r), ([]() -> char* { static char _b[256] = {}; memset(_b,0,256); return _b; }()), 256))
@@ -132,6 +133,16 @@ static inline void arr__ensure_cap_impl(void **data, size_t *cap, size_t need, s
 
 #define ARR_PUSH(arr, x) \
     (ARR_ENSURE_CAP(arr, (arr).len + 1), (arr).data[(arr).len++] = (x))
+
+    #define ARR_PUSH(arr, x) \
+    (ARR_ENSURE_CAP(arr, (arr).len + 1), (arr).data[(arr).len++] = (x))
+
+#define ARR_PUSH_N(arr, ptr, n) \
+    do { \
+        ARR_MAKE_ROOM(arr, n); \
+        memcpy((arr).data + (arr).len, (ptr), (n) * sizeof(*(arr).data)); \
+        (arr).len += (n); \
+    } while (0)
 
 #define ARR_MAKE_ROOM(arr, extra) \
     ARR_ENSURE_CAP(arr, (arr).len + (size_t)(extra))

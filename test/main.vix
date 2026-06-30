@@ -1,0 +1,133 @@
+@ffi("kernel32.dll")
+extern "C"
+    func VirtualAlloc(addr: *int8, size: int64, types: int32, protect: int32): *uint32
+    func VirtualFree(addr: *int8, size: int64, types: int32): int32
+    func ExitProcess(uExitCode: uint32): void
+
+    func GetProcessHeap(): *int8
+    func HeapAlloc(hHeap: *int8, dwFlags: int32, dwBytes: int64): *int8
+    func HeapReAlloc(hHeap: *int8, dwFlags: int32, lpMem: *int8, dwBytes: int64): *int8
+    func HeapFree(hHeap: *int8, dwFlags: int32, lpMem: *int8): int32
+end
+
+func exit(c: int): void
+	ExitProcess(c)
+end
+
+func malloc(size: int64): *int8
+    var heap: *int8 = GetProcessHeap()
+    return HeapAlloc(heap, 0x08, size)
+end
+
+func free(ptr: *int8, size: int64): void
+    var heap: *int8 = GetProcessHeap()
+    HeapFree(heap, 0, ptr)
+end
+
+func realloc(ptr: *int8, new_size: int64): *int8
+    var heap: *int8 = GetProcessHeap()
+
+    if heap == null then
+        exit(1)
+    end
+
+    var new_ptr: *int8 = HeapReAlloc(heap, 0x08, ptr, new_size)
+
+    return new_ptr
+end
+
+trait Alloc:
+	func alloc_mem(size: int): *void
+	func realloc_mem(target: (int, str), ptr: *void, new_size: int): *void    
+	func dealloc_mem(ptr: *void): void
+end
+
+func is_null(ptr: *int): bool
+	if ptr == null then
+		return true
+	end
+
+	return false
+end
+
+class Alloc()
+	public func alloc_mem(size: int): *void
+		if size == 0 then
+			return malloc(1 as uint64)
+		end
+
+		var ptr: *void = malloc(size)
+
+		if ptr == 0 then
+			exit(1)
+		end
+
+		return ptr
+	end
+
+	public func realloc_mem(self, target: (int, str), ptr: *void, new_size: int): *void
+		if new_size == 0 then
+			exit(1)
+		end
+
+		if is_null(ptr) then
+			var new_ptr: *void = self.alloc_mem(new_size)
+
+			if is_null(new_ptr) then
+				exit(1)
+			end
+
+			return new_ptr
+		end
+
+		var new_ptr: *void = realloc(ptr, new_size as uint64)
+
+		if is_null(new_ptr) then
+			exit(1)
+		end
+
+		return new_ptr
+	end
+
+	public func dealloc_mem(ptr: *void): void
+		if is_null(ptr) then
+			return
+		end
+
+		free(ptr)
+	end
+end
+
+const NOT_FOUND: usize = 18446744073709551615
+
+public struct Array[T]:
+    var data = *T
+    var len = usize
+    var cap = usize
+end
+
+class Array[T]()
+    public func new(items: T[]): Array[T]
+        var count = items.len
+        var initial_cap = count + 16
+        var arr = Array { 
+			data = 0 as *T, 
+			len = 0, 
+			cap = 0 
+		}
+
+        if initial_cap < 8 then
+            initial_cap = 8
+        end
+
+        arr.data = Alloc.alloc_mem(initial_cap * size_of[T]()) as *T
+        arr.cap = initial_cap
+        arr.len = count
+
+        return arr
+    end
+end
+
+func main(): int
+	return 0
+end

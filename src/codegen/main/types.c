@@ -45,14 +45,26 @@ LLVMValueRef codegen_expr_literal(Register *reg, IR_Expr *expr) {
         case Type_Char:  return LLVMConstInt(LLVMInt8TypeInContext(llvm_ctx), expr->data.literal.data.char_val, 0);
         case Type_Ptr:   return LLVMConstNull(LLVMPointerTypeInContext(llvm_ctx, 0));
         case Type_Str:   return codegen_generate_str(reg, expr);
-        default:         return NULL;
+        default: {
+
+            return NULL;
+        };
     }
 }
 
 LLVMValueRef codegen_expr_cast(Register *reg, IR_Expr *expr) {
     LLVMValueRef inner = codegen_expr(reg, expr->data.cast.expr);
-    LLVMTypeRef target_ty = set_type(expr->ty);
+    
+    if (!inner) {
+        if (expr->data.cast.expr && expr->data.cast.expr->tag == IR_Expr_VarRef) {
+            const char* fname = null_terminated(expr->data.cast.expr->data.var_ref.name);
+            inner = LLVMGetNamedFunction(llvm_mod, fname);
+        }
+    }
+
+    LLVMTypeRef target_ty = set_custom_type(expr->ty);
     LLVMTypeRef inner_type = LLVMTypeOf(inner);
+
     if (LLVMGetTypeKind(inner_type) == LLVMStructTypeKind && LLVMGetTypeKind(target_ty) == LLVMPointerTypeKind) {
         return LLVMBuildExtractValue(llvm_builder, inner, 0, "str_ptr");
     }
@@ -62,7 +74,27 @@ LLVMValueRef codegen_expr_cast(Register *reg, IR_Expr *expr) {
     }
 
     if (LLVMGetTypeKind(inner_type) == LLVMIntegerTypeKind && LLVMGetTypeKind(target_ty) == LLVMIntegerTypeKind) {
-        return LLVMBuildIntCast2(llvm_builder, inner, target_ty, 1 /* signed */, "intcast");
+        return LLVMBuildIntCast2(llvm_builder, inner, target_ty, 1, "intcast");
+    }
+
+    if (LLVMGetTypeKind(inner_type) == LLVMIntegerTypeKind && LLVMGetTypeKind(target_ty) == LLVMPointerTypeKind) {
+        if (LLVMIsConstant(inner)) {
+            return LLVMConstIntToPtr(inner, target_ty);
+        } else {
+            return LLVMBuildIntToPtr(llvm_builder, inner, target_ty, "inttoptr");
+        }
+    }
+
+    if (LLVMGetTypeKind(inner_type) == LLVMPointerTypeKind && LLVMGetTypeKind(target_ty) == LLVMIntegerTypeKind) {
+        if (LLVMIsConstant(inner)) {
+            return LLVMConstPtrToInt(inner, target_ty);
+        } else {
+            return LLVMBuildPtrToInt(llvm_builder, inner, target_ty, "ptrtoint");
+        }
+    }
+
+    if (LLVMGetTypeKind(inner_type) == LLVMFunctionTypeKind || (LLVMGetTypeKind(inner_type) == LLVMPointerTypeKind && LLVMGetTypeKind(LLVMGetElementType(inner_type)) == LLVMFunctionTypeKind)) {
+        return LLVMBuildPointerCast(llvm_builder, inner, target_ty, "fnptrcast");
     }
 
     return LLVMBuildBitCast(llvm_builder, inner, target_ty, "cast");

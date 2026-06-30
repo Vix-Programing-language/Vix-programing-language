@@ -87,12 +87,13 @@ typedef enum {
     IR_Expr_MakeTuple,
     IR_Expr_AddrOf,
     IR_Expr_TupleIndex,
+    IR_Expr_Tuple,
 } IR_ExprTag;
 
 struct IR_Expr {
     IR_ExprTag  tag;
-    Type        ty;
-    SourceRange origin;
+    Type ty;
+    SourceRange origin; 
     union {
         struct { IR_LiteralData data; } literal;
         struct { SourceRange name; EntityID eid; } var_ref;
@@ -102,17 +103,18 @@ struct IR_Expr {
         struct { IR_Expr *object; SourceRange method; EntityID method_eid; IR_Expr **args; size_t args_count; } method_call;
         struct { SourceRange name; EntityID eid; IR_FieldInit *fields; size_t fields_count; } make_struct;
         struct { SourceRange name; EntityID eid; IR_Expr **args; size_t args_count; } make_class;
-        struct { SourceRange type_name; SourceRange variant; EntityID eid; IR_Expr **args; size_t args_count; } make_enum;
+        struct { SourceRange type_name; SourceRange variant; EntityID eid; IR_Expr **args; size_t args_count; size_t max_count; EnumVariant tallest; uint32_t active_idx; } make_enum;
 
         struct { IR_Expr *object; IR_Expr *index; } index;
         struct { IR_Expr *expr; } cast;
         struct { IR_Expr *ptr; } deref;
         struct { IR_Expr** elems; size_t elems_count; } make_tuple;
         struct { IR_Expr*  tuple; size_t index; } tuple_index;
-        struct { IR_Expr* base; IR_Expr* index; SourceRange range; } idx;
         struct { IR_Expr** elems; size_t elems_count; } array;
         struct { IR_Expr* object; SourceRange field; FieldOwnerKind kind; EntityID type_eid; } field;
         struct { IR_Expr *expr; } addr_of;
+        struct { IR_Expr** elems; size_t elems_count; } tuple;
+        struct { IR_Expr* object; IR_Expr* index; SourceRange range; bool is_const; } idx;
     } data;
 };
 
@@ -141,8 +143,8 @@ struct IR_Stmt {
         struct { SourceRange name; EntityID eid; Type ty; IR_Expr *init; } const_decl;
         struct { SourceRange name; EntityID eid; Type ty; } local_decl;
         struct { IR_Expr *target; LexerTokenTag op; IR_Expr *value; } assign;
-        struct { IR_Expr *val; } ret;
-        struct { IR_Expr *cond; Pattern guard_pattern; IR_Stmt *body; size_t body_count; IR_Stmt *else_body; size_t else_body_count; } if_;
+        struct { IR_Expr *val; Type return_type; } ret;
+        struct { IR_Expr *cond; IfPat pat; IR_Stmt *body; size_t body_count; IR_Stmt *else_body; size_t else_body_count; } if_;
         struct { IR_Expr *cond; IR_Stmt *body; size_t body_count; } while_;
         struct { SourceRange var; EntityID var_eid; Type var_ty; IR_Expr *iter; IR_Stmt *body; size_t body_count; } for_;
         struct { IR_Expr *expr; IR_MatchArm *arms; size_t arms_count; IR_Stmt *default_body; size_t default_body_count; } match;
@@ -272,7 +274,6 @@ void ir_push_stmt(IR_StmtArr *out, IR_Stmt s) { ARR_PUSH(*out, s); }
 #define LOWER_EXPR(reg, src) \
     ((src) && (src)->tag ? lower_expr((reg), (src)) : (IR_Expr){0})
 
-// Safe alloc - only allocs if src is non-null and has a tag
 #define LOWER_EXPR_ALLOC(reg, src) \
     ((src) && (src)->tag ? ir_expr_alloc(lower_expr((reg), (src))) : NULL)
 
@@ -327,6 +328,13 @@ static inline void ir_mod_push_if(IR_Module *mod, IR_Def d) {
             .ty   = (src)[_i].type_tree ? *(src)[_i].type_tree : (Type){0}, \
         })); \
     }
+
+#define LOWER_ARR(T, out_arr, count, body_expr) \
+    do { \
+        for (size_t _i = 0; _i < (count); _i++) { \
+            ARR_PUSH((out_arr), (body_expr)); \
+        } \
+    } while (0)
 
 IR_Module lower_stmt(Register *reg, IR_Module mod, IR_StmtArr *stmts_out);
 IR_Def lower_function(Register *reg, uint32_t id);

@@ -4,68 +4,10 @@
 
 static void* memdup(const void* src, size_t n);
 
-bool range_eq(SourceRange r, const char* str) {
-    size_t len = r.end - r.start;
-    return strlen(str) == len && memcmp(r.start, str, len) == 0;
-}
 Exprs parser_builtin_function(Parser* self);
 Exprs parser_index(Parser* self, SourceRange idx);
 Type parser_type_base(Parser* self);
 
-
-static inline bool is_operation(LexerTokenTag tag) {
-    switch (tag) {
-        case Plus:
-        case Minuss:
-        case Stars:
-        case Slashs:
-        case Percents:
-        case Lesses:
-        case Greaters:
-        case NEqs:
-        case Equalss:
-        case Ampersands:
-        case Pipes:
-        case Carets:
-        case Tildes:
-        case Bangs:
-        case PlusEqualss:
-        case MinusEqualss:
-        case StarEqualss:
-        case SlashEqualss:
-        case PercentEqualss:
-        case PipeEqualss:
-        case AmpersandEqualss:
-        case CaretEqualss:
-        case LeftShiftEqualss:
-        case RightShiftEqualss:
-        case LeftShifts:
-        case RightShifts:
-        case LessEqualss:
-        case GreaterEqualss:
-        case NotEqualss:
-        case DoubleEqualss:
-        case Ands:
-        case Ors:
-        case Nots:
-            return true;
-        default:
-            return false;
-    }
-}
-
-bool is_type(SourceRange tok) {
-    return range_eq(tok, "int")     ||
-           range_eq(tok, "int8")    ||
-           range_eq(tok, "int16")   ||
-           range_eq(tok, "int32")   ||
-           range_eq(tok, "int64")   ||
-           range_eq(tok, "float")   ||
-           range_eq(tok, "float32") ||
-           range_eq(tok, "float64") ||
-           range_eq(tok, "char")    ||
-           range_eq(tok, "string");
-}
 
 Stmts parser_stmt(Parser* self);
 Exprs parser_expr(Parser* self);
@@ -137,6 +79,13 @@ Exprs parser_literal(Parser* self, SourceRange name) {
         }
 
         p.value = parser_expr(self);
+
+        if (p.value.tag == Expr_Cast && p.value.data.cast.ty) {
+            p.type = *p.value.data.cast.ty;
+        } else if (p.value.tag == Expr_Identifiers) {
+            p.type = (Type){ .tag = Type_Custom, .data.custom.name = p.value.data.identifiers.name };
+        }
+
         ARR_PUSH(fields, p);
 
         if (parser_current(self).tag == Commas) parser_advance(self);
@@ -289,11 +238,43 @@ Exprs parser_expr_primary(Parser* self) {
         };
     }
 
-    if (tok.tag == LeftParens) { parser_advance(self);
-        Exprs inner = parser_expr(self);
+    if (tok.tag == LeftParens) {
+        parser_advance(self);
+
+        if (parser_current(self).tag == RightParens) {
+            parser_advance(self);
+            return (Exprs){ .tag = Expr_Tuple, .data.tuple = { .elems = NULL, .elems_count = 0 } };
+        }
+
+        Exprs first = parser_expr(self);
+
+        if (parser_current(self).tag == Commas) {
+            Exprs* elems = NULL;
+            size_t elems_count = 0, elems_cap = 0;
+
+            elems_cap = 4;
+            elems = malloc(elems_cap * sizeof(Exprs));
+            elems[elems_count++] = first;
+
+            while (parser_current(self).tag == Commas) {
+                parser_advance(self);
+                if (parser_current(self).tag == RightParens) break;
+                if (elems_count == elems_cap) {
+                    elems_cap *= 2;
+                    elems = realloc(elems, elems_cap * sizeof(Exprs));
+                }
+                elems[elems_count++] = parser_expr(self);
+            }
+            if (!parser_expect(self, RightParens)) parser_sync(self);
+
+            return (Exprs){
+                .tag = Expr_Tuple,
+                .data.tuple = { .elems = elems, .elems_count = elems_count }
+            };
+        }
 
         if (!parser_expect(self, RightParens)) parser_sync(self);
-        return inner;
+        return first;
     }
 
     if (tok.tag == Strings || tok.tag == Ints  || tok.tag == Floats  || tok.tag == Chars || tok.tag == Trues   || tok.tag == Falses || tok.tag == Nulls) {
@@ -365,22 +346,57 @@ Exprs parser_expr_primary(Parser* self) {
         if (next.tag == Dots) { 
             return parser_method_calls(self, name);
         }
+    if (next.tag == LeftBrackets) {
+        LexerToken after_bracket = parser_peek_next(self);
         
-        if (next.tag == LeftBrackets) {
-            parser_advance(self); // consume '['
-
-
-            if (parser_current(self).tag == TypeToken) {
-                // support this.
-                return (Exprs){0};
+        if (is_type_token(after_bracket.tag)) {
+            parser_advance(self);
+            RangeArr generic_params = {0};
+            while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
+                if (is_type_token(parser_current(self).tag)) {
+                    ARR_PUSH(generic_params, parser_current(self).range);
+                    parser_advance(self);
+                } else if (parser_current(self).tag == Commas) {
+                    parser_advance(self);
+                } else {
+                    parse_error(self, ParseErr_UnexpectedToken, "expected type in generic args", parser_current(self).tag);
+                    parser_advance(self);
+                }
             }
+            if (!parser_expect(self, RightBrackets)) parser_sync(self);
 
-            if (parser_current(self).tag == LeftParens) {
-                return parser_function_call(self, name);
+            if (parser_current(self).tag == LeftBraces) {
+                Exprs result = parser_literal(self, name);
+                result.data.struct_calls.generic_params = generic_params.data;
+                result.data.struct_calls.generic_params_count = generic_params.len;
+                return result;
+            } else if (parser_current(self).tag == LeftParens) {
+                ParamArr params = {0};
+                parser_advance(self);
+                while (parser_current(self).tag != RightParens && parser_current(self).tag != EOFs) {
+                    Param p = {0};
+                    p.value = parser_expr(self);
+                    ARR_PUSH(params, p);
+                    if (parser_current(self).tag == Commas) parser_advance(self);
+                }
+                if (!parser_expect(self, RightParens)) parser_sync(self);
+                return (Exprs){
+                    .tag = Expr_Function,
+                    .data.function_call = {
+                        .name = name,
+                        .param = params.data,
+                        .param_count = params.len,
+                        .generic_params = generic_params.data,
+                        .generic_params_count = generic_params.len,
+                    }
+                };
             }
-
-            return parser_index(self, name);
         }
+
+        parser_advance(self);
+        return parser_index(self, name);
+    }
+
 
         if (tok.tag == LeftBrackets) return parser_array(self);
 
@@ -433,7 +449,7 @@ Exprs parser_function_call(Parser* self, SourceRange fn) {
     if (parser_current(self).tag == LeftBrackets) {
         parser_advance(self); // consume '['
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
-            if (parser_current(self).tag == Identifier || parser_current(self).tag == TypeToken, parser_current(self).tag == Ints) {
+            if (is_type_token(parser_current(self).tag)) {
                 ARR_PUSH(generic_params, parser_current(self).range);
                 parser_advance(self);
             } else if (parser_current(self).tag == Commas) {
@@ -497,7 +513,7 @@ Exprs parser_method_calls(Parser* self, SourceRange class) {
     if (parser_current(self).tag == LeftBrackets) {
         parser_advance(self);
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
-            if (parser_current(self).tag == Identifier || parser_current(self).tag == TypeToken) {
+            if (is_type_token(parser_current(self).tag)) {
                 ARR_PUSH(generic_params, parser_current(self).range);
                 parser_advance(self);
             } else if (parser_current(self).tag == Commas) {
@@ -562,7 +578,7 @@ Exprs parser_struct_call(Parser* self, SourceRange str) {
     if (parser_current(self).tag == LeftBrackets) {
         parser_advance(self);
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
-            if (parser_current(self).tag == Identifier) {
+            if (is_type_token(parser_current(self).tag)) {
                 ARR_PUSH(generic_params, parser_current(self).range);
                 parser_advance(self);
             } else if (parser_current(self).tag == Commas) {
@@ -603,8 +619,10 @@ Exprs parser_struct_call(Parser* self, SourceRange str) {
                 parse_error(self, ParseErr_ExpectedToken, "expected ':' after field name", Colons);
             }
             Type parsed = parser_type(self);
-            p.c_type = parsed.tag == Type_Custom ? parsed.data.custom.name : (SourceRange){0};
-            p.type_tree  = type_heap(parsed);
+            p.type = parsed;
+
+
+
             ARR_PUSH(params, p);
             if (parser_current(self).tag == Commas) parser_advance(self);
         }
@@ -633,7 +651,7 @@ Exprs parser_enums_call(Parser* self, SourceRange en) {
     if (parser_current(self).tag == LeftBrackets) {
         parser_advance(self);
         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
-            if (parser_current(self).tag == Identifier) {
+            if (is_type_token(parser_current(self).tag)) {
                 ARR_PUSH(generic_params, parser_current(self).range);
                 parser_advance(self);
             } else if (parser_current(self).tag == Commas) {
@@ -660,22 +678,18 @@ Exprs parser_enums_call(Parser* self, SourceRange en) {
         parser_advance(self);
         while (parser_current(self).tag != RightParens && parser_current(self).tag != EOFs) {
             Param p = {0};
-            if (parser_current(self).tag == Identifier) {
-                p.name = parser_current(self).range;
+            LexerToken cur = parser_current(self);
+
+            if (cur.tag == Identifier && parser_peek_next(self).tag == Colons) {
+                p.name = cur.range;
                 parser_advance(self);
-            } else {
-                parse_error(self, ParseErr_ExpectedToken, "expected parameter name in enum call", Identifier);
-                parser_sync(self);
-                break;
-            }
-            if (parser_current(self).tag == Colons) {
                 parser_advance(self);
+                p.value = parser_expr(self);
             } else {
-                parse_error(self, ParseErr_ExpectedToken, "expected ':' after parameter name", Colons);
+                p.name  = (SourceRange){0};
+                p.value = parser_expr(self);
             }
-            Type parsed = parser_type(self);
-            p.c_type = parsed.tag == Type_Custom ? parsed.data.custom.name : (SourceRange){0};
-            p.type_tree = type_heap(parsed);
+
             ARR_PUSH(params, p);
             if (parser_current(self).tag == Commas) parser_advance(self);
         }
@@ -694,6 +708,7 @@ Exprs parser_enums_call(Parser* self, SourceRange en) {
         }}
     };
 }
+
 Type parser_type_base(Parser* self) {
     LexerToken tok = parser_current(self);
 
@@ -724,7 +739,7 @@ Type parser_type_base(Parser* self) {
             parse_error(self, ParseErr_ExpectedToken, "expected '[' after 'atomic'", LeftBrackets);
             return (Type){ .tag = Type_Void };
         }
-        parser_advance(self); // consume '['
+        parser_advance(self);
 
         Type* inner = malloc(sizeof(Type));
         *inner = parser_type(self);
@@ -737,6 +752,7 @@ Type parser_type_base(Parser* self) {
 
         return (Type){ .tag = Type_Atomic, .data.atomic.inner = inner };
     }
+
 
     if (tok.tag == LeftParens) {
         parser_advance(self);
@@ -758,15 +774,42 @@ Type parser_type_base(Parser* self) {
 
     if (tok.tag == Stars) {
         parser_advance(self);
+
+        bool is_const = false;
+        if (parser_current(self).tag == Consts) {
+            is_const = true;
+            parser_advance(self);
+        }
+
         Type* inner = malloc(sizeof(Type));
         if (parser_current(self).tag == Stars) {
             parser_advance(self);
+
+            bool inner_const = false;
+            if (parser_current(self).tag == Consts) {
+                inner_const = true;
+                parser_advance(self);
+            }
+
             *inner = parser_type(self);
-            return (Type){ .tag = Type_RawPtr, .data.raw_ptr.inner = inner };
+            Type* raw = malloc(sizeof(Type));
+            *raw = (Type){
+                .tag = Type_RawPtr,
+                .data.raw_ptr = { .inner = inner, .is_const = inner_const }
+            };
+            return (Type){
+                .tag = Type_Ptr,
+                .data.ptr = { .inner = raw, .is_const = is_const }
+            };
         }
+
         *inner = parser_type(self);
-        return (Type){ .tag = Type_Ptr, .data.ptr.inner = inner };
+        return (Type){
+            .tag = Type_Ptr,
+            .data.ptr = { .inner = inner, .is_const = is_const }
+        };
     }
+
 
     if (tok.tag == Functions) {
         parser_advance(self);
@@ -802,6 +845,22 @@ Type parser_type_base(Parser* self) {
 
 Type parser_type(Parser* self) {
     Type t = parser_type_base(self);
+
+
+    if (t.tag == Type_Custom && parser_current(self).tag == LeftBrackets) {
+    parser_advance(self);
+    RangeArr generic_args = {0};
+    while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
+        ARR_PUSH(generic_args, parser_current(self).range);
+        parser_advance(self);
+        if (parser_current(self).tag == Commas) parser_advance(self);
+    }
+    if (!parser_expect(self, RightBrackets)) parser_sync(self);
+
+    t.data.custom.generic_args = generic_args.data;
+    t.data.custom.generic_args_count = generic_args.len;
+    return t;
+}
 
     if (t.tag == TypeToken && parser_current(self).tag == LeftBrackets) {
         parser_advance(self);
@@ -899,8 +958,7 @@ Stmts parser_functions(Parser* self, bool is_const, bool is_unsafe, bool is_pub)
         SourceRange type_start = parser_current(self).range;
         Type param_type = parser_type(self);
 
-        p.c_type = param_type.tag == Type_Custom ? param_type.data.custom.name : (SourceRange){0};
-        p.type_tree = (param_type.tag == Type_Custom) ? NULL : memdup(&param_type, sizeof(Type));
+        p.type = param_type;
 
         ARR_PUSH(params, p);
         if (parser_current(self).tag == Commas) parser_advance(self);
@@ -922,8 +980,6 @@ Stmts parser_functions(Parser* self, bool is_const, bool is_unsafe, bool is_pub)
 
     if (!parser_expect(self, Ends)) parser_sync(self);
 
-    SourceRange ret_range = return_type.tag == Type_Custom ? return_type.data.custom.name : (SourceRange){0};
-
     return (Stmts){
         .tag = Stmt_Functions,
         .data = { .functions = {
@@ -932,10 +988,7 @@ Stmts parser_functions(Parser* self, bool is_const, bool is_unsafe, bool is_pub)
             .params_count = params.len,
             .generic_params = generic_params.data,
             .generic_params_count = generic_params.len,
-            .return_type      = ret_range,
-            .return_type_tag  = return_type.tag,
-            .return_type_bits = return_type.tag == Type_Int ? return_type.data.int_t.bits : return_type.tag == Type_Float ? return_type.data.float_t.bits : 0,
-            .return_type_tree = type_heap(return_type),
+            .return_type = return_type,
             .body = body.data,
             .body_count = body.len,
             .is_unsafe = is_unsafe,
@@ -1014,8 +1067,9 @@ Stmts parser_trait_functions(Parser* self) {
             parse_error(self, ParseErr_ExpectedToken, "expected ':' after parameter name", Colons);
         }
         Type param_type = parser_type(self);
-        p.c_type    = param_type.tag == Type_Custom ? param_type.data.custom.name : (SourceRange){0};
-        p.type_tree = type_heap(param_type);
+        p.type = param_type;
+
+
         ARR_PUSH(params, p);
         if (parser_current(self).tag == Commas) parser_advance(self);
     }
@@ -1027,8 +1081,6 @@ Stmts parser_trait_functions(Parser* self) {
         return_type = parser_type(self);
     }
 
-    SourceRange ret_range = return_type.tag == Type_Custom ? return_type.data.custom.name : (SourceRange){0};
-
     return (Stmts){
         .tag = Stmt_Functions,
         .data = { .functions = {
@@ -1037,10 +1089,7 @@ Stmts parser_trait_functions(Parser* self) {
             .params_count = params.len,
             .generic_params = generic_params.data,
             .generic_params_count = generic_params.len,
-            .return_type      = ret_range,
-            .return_type_tag  = return_type.tag,
-            .return_type_bits = return_type.tag == Type_Int   ? return_type.data.int_t.bits   : return_type.tag == Type_Float ? return_type.data.float_t.bits : 0,
-            .return_type_tree = type_heap(return_type),
+            .return_type = return_type,
             .body = NULL,
             .body_count = 0,
             .is_unsafe = false,
@@ -1128,8 +1177,8 @@ Stmts parser_class(Parser* self, bool is_pub) {
                 parse_error(self, ParseErr_ExpectedToken, "expected ':' after parameter name", Colons);
             }
             Type parsed = parser_type(self);
-            p.c_type = parsed.tag == Type_Custom ? parsed.data.custom.name : (SourceRange){0};
-            p.type_tree = type_heap(parsed);
+            p.type = parsed;
+
             ARR_PUSH(class_params, p);
             if (parser_current(self).tag == Commas) parser_advance(self);
         }
@@ -1174,8 +1223,7 @@ Stmts parser_class(Parser* self, bool is_pub) {
                 parse_error(self, ParseErr_ExpectedToken, "expected ':' after field name", Colons);
             }
             Type parsed = parser_type(self);
-            f.c_type = parsed.tag == Type_Custom ? parsed.data.custom.name : (SourceRange){0};
-            f.type_tree = type_heap(parsed);
+            f.type = parsed;
 
             ARR_PUSH(fields, f);
 
@@ -1252,6 +1300,7 @@ Stmts parser_class(Parser* self, bool is_pub) {
             .parent = parent,
             .generic_params = generic_params.data,
             .generic_params_count = generic_params.len,
+            .generic_param_nodes = generic_params.data,
             .trait_bounds = traits.data,
             .traits_count = traits.len,
             .is_pub = is_pub,
@@ -1330,8 +1379,7 @@ Stmts parser_structer(Parser* self, bool is_pub, bool is_unsafe) {
                     parse_error(self, ParseErr_ExpectedToken, "expected '=' after field name", Equalss);
                 }
                 Type parsed = parser_type(self);
-                f.c_type = parsed.tag == Type_Custom ? parsed.data.custom.name : (SourceRange){0};
-                f.type_tree = type_heap(parsed);
+                f.type = parsed;
 
                 ARR_PUSH(fields, f);
                 break;
@@ -1341,14 +1389,14 @@ Stmts parser_structer(Parser* self, bool is_pub, bool is_unsafe) {
                 f.name = parser_current(self).range;
                 parser_advance(self);
 
-                if (parser_current(self).tag == Equalss) {
+                if (parser_current(self).tag == Colons) {
                     parser_advance(self);
                 } else {
-                    parse_error(self, ParseErr_ExpectedToken, "expected '=' after field name", Equalss);
+                    parse_error(self, ParseErr_ExpectedToken, "expected ':' after field name", Equalss);
                 }
                 Type parsed = parser_type(self);
-                f.c_type = parsed.tag == Type_Custom ? parsed.data.custom.name : (SourceRange){0};
-                f.type_tree  = type_heap(parsed);
+                f.type = parsed;
+
 
                 ARR_PUSH(fields, f);
                 break;
@@ -1368,6 +1416,7 @@ Stmts parser_structer(Parser* self, bool is_pub, bool is_unsafe) {
             .name = n,
             .generic_params = generic_params.data,
             .generic_params_count = generic_params.len,
+            .generic_param_nodes = generic_params.data,
             .fields = fields.data,
             .fields_count = fields.len,
             .is_pub = is_pub,
@@ -1438,24 +1487,17 @@ Stmts parser_enums(Parser* self, bool is_pub, bool is_unsafe) {
 
                 while (parser_current(self).tag != RightParens && parser_current(self).tag != EOFs) {
                     SourceRange fname = {0};
-                    SourceRange ftype = {0};
-                    if (parser_current(self).tag == Identifier) {
+
+                    bool has_name = (parser_current(self).tag == Identifier || is_type_token(parser_current(self).tag)) && parser_peek_next(self).tag == Colons;
+
+                    if (has_name) {
                         fname = parser_current(self).range;
                         parser_advance(self);
-                    } else {
-                        parse_error(self, ParseErr_ExpectedToken, "expected field name in enum variant", Identifier);
-                        parser_sync(self);
-                        break;
-                    }
-                    if (parser_current(self).tag == Colons) {
                         parser_advance(self);
-                    } else {
-                        parse_error(self, ParseErr_ExpectedToken, "expected ':' after enum field name", Colons);
                     }
-                    Type ft = parser_type(self);
-                    ftype = ft.tag == Type_Custom ? ft.data.custom.name : (SourceRange){0};
 
-                    ARR_PUSH(fields, ((EnumField){ fname, ftype }));
+                    Type ft = parser_type(self);
+                    ARR_PUSH(fields, ((EnumField){ .name = fname, .type = ft }));
                     if (parser_current(self).tag == Commas) parser_advance(self);
                 }
                 if (!parser_expect(self, RightParens)) parser_sync(self);
@@ -1478,9 +1520,10 @@ Stmts parser_enums(Parser* self, bool is_pub, bool is_unsafe) {
         .data = { .enums = {
             .name = n,
             .variants = variants.data,
+            .variants_count = variants.len,
             .generic_params = generic_params.data,
             .generic_params_count = generic_params.len,
-            .variants_count = variants.len,
+            .generic_param_nodes = generic_params.data,
             .is_pub = is_pub,
         }}
     };
@@ -1560,7 +1603,6 @@ Stmts parser_traits(Parser* self, bool is_pub, bool is_unsafe) {
                 m.body_count       = fn.data.functions.body_count;
                 m.is_pub           = fn.data.functions.is_pub;
                 m.return_type      = fn.data.functions.return_type;
-                m.return_type_tree = fn.data.functions.return_type_tree;
                 ARR_PUSH(methods, m);
                 break;
             }
@@ -1624,10 +1666,11 @@ Stmts parser_vars(Parser* self) {
     }
 
     if (parser_current(self).tag == Colons) {
-        parser_advance(self);
-        var_type_start = parser_current(self).range;
-        var_type = parser_type(self);
-    }
+    parser_advance(self);
+    var_type = parser_type(self);
+
+}
+
 
     if (parser_current(self).tag == Equalss) {
         parser_advance(self);
@@ -1635,14 +1678,13 @@ Stmts parser_vars(Parser* self) {
     } else {
         parse_error(self, ParseErr_ExpectedToken, "expected '=' in variable declaration", Equalss);
     }
-
+    
     return (Stmts) {
         .tag = Stmt_Vars,
         .data.vars = {
             .name = n,
-            .c_type = var_type.tag == Type_Custom ? var_type.data.custom.name : var_type_start,
+            .type = var_type,
             .value = var_value,
-            .type_tree = type_heap(var_type),
             .range = { .start = start.start, .end = n.end, .file_id = start.file_id },
         }
     };
@@ -1666,7 +1708,6 @@ Stmts parser_lets(Parser* self) {
 
     if (parser_current(self).tag == Colons) {
         parser_advance(self);
-        let_type_start = parser_current(self).range;
         let_type = parser_type(self);
     }
 
@@ -1681,8 +1722,7 @@ Stmts parser_lets(Parser* self) {
         .tag = Stmt_Lets,
         .data.lets = {
             .name      = n,
-            .c_type    = let_type.tag == Type_Custom ? let_type.data.custom.name : let_type_start,
-            .type_tree = type_heap(let_type),
+            .type = let_type,
             .value     = var_value,
             .range     = { .start = start.start, .end = n.end, .file_id = start.file_id },
         }
@@ -1705,7 +1745,7 @@ Stmts parser_const(Parser* self) {
 
     if (parser_current(self).tag == Colons) {
         parser_advance(self);
-        const_type_start = parser_current(self).range;
+        
         const_type = parser_type(self);
     }
 
@@ -1720,8 +1760,7 @@ Stmts parser_const(Parser* self) {
         .tag = Stmt_Consts,
         .data.consts = {
             .name      = n,
-            .c_type    = const_type.tag == Type_Custom ? const_type.data.custom.name : const_type_start,
-            .type_tree = type_heap(const_type),
+            .type = const_type,
             .value     = var_value,
             .range     = { .start = start.start, .end = n.end, .file_id = start.file_id },
         }
@@ -1745,7 +1784,6 @@ Stmts parser_globle(Parser* self, bool is_pub, bool is_const) {
 
     if (parser_current(self).tag == Colons) {
         parser_advance(self);
-        g_type_start = parser_current(self).range;
         g_type = parser_type(self);
     }
 
@@ -1761,8 +1799,7 @@ Stmts parser_globle(Parser* self, bool is_pub, bool is_const) {
             .tag = Stmt_Consts,
             .data.consts = {
                 .name      = n,
-                .c_type    = g_type.tag == Type_Custom ? g_type.data.custom.name : g_type_start,
-                .type_tree = type_heap(g_type),
+                .type = g_type,
                 .value     = var_value,
                 .is_pub    = is_pub,
                 .range     = n,
@@ -1773,11 +1810,10 @@ Stmts parser_globle(Parser* self, bool is_pub, bool is_const) {
     return (Stmts){
         .tag = Stmt_Locals,
         .data.locals = {
-            .name      = n,
-            .c_type    = g_type.tag == Type_Custom ? g_type.data.custom.name : g_type_start,
-            .type_tree = type_heap(g_type),
-            .is_pub    = is_pub,
-            .range     = n,
+            .name = n,
+            .type = g_type,
+            .is_pub = is_pub,
+            .range = n,
         }
     };
 }
@@ -1979,9 +2015,7 @@ ExternBlock parser_extern(Parser* self) {
                 SourceRange type_start = parser_current(self).range;
                 Type param_type = parser_type(self);
 
-                p.c_type = param_type.tag == Type_Custom ? param_type.data.custom.name : type_start;
-                p.type_tree = memdup(&param_type, sizeof(Type));
-
+                p.type = param_type;
                 ARR_PUSH(params, p);
                 if (parser_current(self).tag == Commas) parser_advance(self);
             }
@@ -1998,8 +2032,7 @@ ExternBlock parser_extern(Parser* self) {
             SourceRange ret_start = parser_current(self).range;
             Type ret_type = parser_type(self);
 
-            fn.return_type = ret_type.tag == Type_Custom ? ret_type.data.custom.name : ret_start;
-            fn.return_type_tree = type_heap(ret_type); 
+            fn.return_type = ret_type;
         }
 
         fn.ffi_type = abi;
@@ -2141,19 +2174,106 @@ Stmts parser_for(Parser* self) {
     };
 }
 
+static IfPat parser_if_pat(Parser* self) {
+    IfPat pat = {0};
+    LexerToken cur = parser_current(self);
+
+    if (cur.tag == Lets) {
+        pat.kind = IfPat_Let;
+        parser_advance(self);
+
+        LexerToken name = parser_current(self);
+        if (name.tag != Identifier) {
+            parse_error(self, ParseErr_ExpectedToken,
+                        "expected identifier after 'let'", Identifier);
+            return pat;
+        }
+        pat.bind_name = name.range;
+        parser_advance(self);
+
+    } else if (cur.tag == Vars) {
+        pat.kind = IfPat_Var;
+        parser_advance(self);
+
+        LexerToken name = parser_current(self);
+        if (name.tag != Identifier) {
+            parse_error(self, ParseErr_ExpectedToken,
+                        "expected identifier after 'var'", Identifier);
+            return pat;
+        }
+        pat.bind_name = name.range;
+        parser_advance(self);
+
+    } else if (cur.tag == Identifier && isupper((unsigned char)cur.range.start[0])) {
+        pat.variant = cur.range;
+        parser_advance(self);
+
+        if (parser_current(self).tag != LeftParens) {
+            parse_error(self, ParseErr_ExpectedToken,
+                        "expected '(' after enum variant in if-pattern", LeftParens);
+            return pat;
+        }
+        parser_advance(self);
+
+        LexerToken inner = parser_current(self);
+        if (inner.tag == Underscores) {
+            pat.kind              = IfPat_Wildcard;
+            pat.inner_is_wildcard = true;
+        } else if (inner.tag == Identifier) {
+            pat.kind       = IfPat_Enum;
+            pat.inner_bind = inner.range;
+        } else {
+            parse_error(self, ParseErr_ExpectedToken,
+                        "expected identifier or '_' inside enum pattern", Identifier);
+            return pat;
+        }
+        parser_advance(self);
+
+        if (parser_current(self).tag != RightParens) {
+            parse_error(self, ParseErr_ExpectedToken,
+                        "expected ')' after enum pattern binding", RightParens);
+            return pat;
+        }
+        parser_advance(self);
+
+    } else {
+        pat.kind = IfPat_None;
+        return pat;
+    }
+
+    if (parser_current(self).tag != Equalss) {
+        parse_error(self, ParseErr_ExpectedToken,
+                    "expected '=' after if-pattern", Equalss);
+        return pat;
+    }
+    parser_advance(self);
+
+    return pat;
+}
 
 Stmts parser_if(Parser* self) {
     parser_advance(self);
+
+    /* ── pattern (optional) ── */
+    IfPat pat = parser_if_pat(self);
+
+    /* ── condition / rhs expression ── */
     Exprs condition = parser_expr(self);
+
+    /* attach the pattern's init_expr pointer to the condition we just parsed */
+    if (pat.kind != IfPat_None) {
+        pat.init_expr = &condition;   /* or store a heap copy if your AST owns it */
+    }
 
     if (parser_current(self).tag == Thens) {
         parser_advance(self);
     } else {
-        parse_error(self, ParseErr_ExpectedToken, "expected 'then' after if condition", Thens);
+        parse_error(self, ParseErr_ExpectedToken,
+                    "expected 'then' after if condition", Thens);
     }
 
     StmtsArr body = {0};
-    while (parser_current(self).tag != Ends &&
+    while (parser_current(self).tag != Ends  &&
            parser_current(self).tag != Elifs &&
            parser_current(self).tag != Elses &&
            parser_current(self).tag != EOFs) {
@@ -2173,27 +2293,35 @@ Stmts parser_if(Parser* self) {
     return (Stmts) {
         .tag = Stmt_Ifs,
         .data.ifs = {
+            .pat = pat,
             .cond = condition,
             .body = body.data,
             .body_count = body.len,
             .else_body = else_body.data,
-            .else_body_count = else_body.len
+            .else_body_count = else_body.len,
         }
     };
 }
 
 Stmts parser_elif(Parser* self) {
     parser_advance(self);
+
+    IfPat pat = parser_if_pat(self);
     Exprs condition = parser_expr(self);
+
+    if (pat.kind != IfPat_None) {
+        pat.init_expr = &condition;
+    }
 
     if (parser_current(self).tag == Thens) {
         parser_advance(self);
     } else {
-        parse_error(self, ParseErr_ExpectedToken, "expected 'then' after elif condition", Thens);
+        parse_error(self, ParseErr_ExpectedToken,
+                    "expected 'then' after elif condition", Thens);
     }
 
     StmtsArr body = {0};
-    while (parser_current(self).tag != Ends &&
+    while (parser_current(self).tag != Ends  &&
            parser_current(self).tag != Elifs &&
            parser_current(self).tag != Elses &&
            parser_current(self).tag != EOFs) {
@@ -2209,13 +2337,14 @@ Stmts parser_elif(Parser* self) {
     }
 
     return (Stmts) {
-        .tag = Stmt_Elifs,
+        .tag      = Stmt_Elifs,
         .data.ifs = {
-            .cond = condition,
-            .body = body.data,
-            .body_count = body.len,
-            .else_body = else_body.data,
-            .else_body_count = else_body.len
+            .pat             = pat,
+            .cond            = condition,
+            .body            = body.data,
+            .body_count      = body.len,
+            .else_body       = else_body.data,
+            .else_body_count = else_body.len,
         }
     };
 }
@@ -2537,7 +2666,7 @@ void parser_class_method(Parser* self, bool is_pub, bool is_unsafe, MethodArr* m
     m.is_pub           = fn.data.functions.is_pub;
     m.is_unsafe        = fn.data.functions.is_unsafe;
     m.return_type      = fn.data.functions.return_type;
-    m.return_type_tree = fn.data.functions.return_type_tree;
+    m.return_type = fn.data.functions.return_type;
     ARR_PUSH(*methods, m);
 }
 
@@ -2743,7 +2872,7 @@ Stmts parser_stmt(Parser* self) {
                     if (parser_current(self).tag == LeftBrackets) {
                         parser_advance(self);
                         while (parser_current(self).tag != RightBrackets && parser_current(self).tag != EOFs) {
-                            if (parser_current(self).tag == Identifier || parser_current(self).tag == TypeToken) {
+                            if (is_type_token(parser_current(self).tag)) {
                                 ARR_PUSH(generic_params, parser_current(self).range);
                                 parser_advance(self);
                             } else if (parser_current(self).tag == Commas) {
@@ -2762,8 +2891,7 @@ Stmts parser_stmt(Parser* self) {
                         while (parser_current(self).tag != RightParens && parser_current(self).tag != EOFs) {
                             Param p = {0};
 
-                            if (parser_current(self).tag == Identifier &&
-                                parser_peek_next(self).tag == Colons) {
+                            if (parser_current(self).tag == Identifier && parser_peek_next(self).tag == Colons) {
                                 p.name = parser_current(self).range;
                                 parser_advance(self); // consume name
                                 parser_advance(self); // consume ':'
@@ -2805,7 +2933,17 @@ Stmts parser_stmt(Parser* self) {
                     };
                 }
 
+
+                if (next.tag == LeftBrackets && is_type_token(parser_peek_next(self).tag)) {
+                    Exprs call = parser_function_call(self, name);
+                    return (Stmts){
+                        .tag = Stmt_ExprStmt,
+                        .data.expr_stmt = { .expr = call }
+                    };
+                }
+
                 LexerTokenTag op = next.tag;
+
                 switch (op) {
                     case Equalss:
                     case PlusEqualss:
@@ -2833,73 +2971,75 @@ Stmts parser_stmt(Parser* self) {
                         };
                     }
 
-                  
-                    case LeftParens: {
-                        Exprs call = parser_function_call(self, name);
-                        return (Stmts){
-                            .tag = Stmt_ExprStmt,
-                            .data.expr_stmt = { .expr = call }
-                        };
-                    }
+                
 
-                    case LeftBrackets: {
-                        parser_advance(self); // consume '['
-                        Exprs* index = malloc(sizeof(Exprs));
-                        *index = parser_expr(self);
-                        if (!parser_expect(self, RightBrackets)) parser_sync(self);
+                  case LeftParens: {
+                    Exprs call = parser_function_call(self, name);
+                    return (Stmts){
+                        .tag = Stmt_ExprStmt,
+                        .data.expr_stmt = { .expr = call }
+                    };
+                }
 
-                        LexerTokenTag op = parser_current(self).tag;
-                        switch (op) {
-                            case Equalss:
-                            case PlusEqualss:
-                            case MinusEqualss:
-                            case StarEqualss:
-                            case SlashEqualss:
-                            case PercentEqualss:
-                            case AmpersandEqualss:
-                            case PipeEqualss:
-                            case CaretEqualss:
-                            case LeftShiftEqualss:
-                            case RightShiftEqualss: {
-                                parser_advance(self);
-                                Exprs value = parser_expr(self);
-                                Exprs* base = malloc(sizeof(Exprs));
-                                *base = (Exprs){
-                                    .tag = Expr_Identifiers,
-                                    .data.identifiers = { .name = name }
-                                };
-                                return (Stmts){
-                                    .tag = Stmt_Assigns,
-                                    .data.assigns = {
-                                        .target = (Exprs){
-                                            .tag = Expr_Idx,
-                                            .data.idx = { .base = base, .index = index, .range = name }
-                                        },
-                                        .op = op,
-                                        .value = value,
-                                    }
-                                };
-                            }
-                            default: {
-                                Exprs* base = malloc(sizeof(Exprs));
-                                *base = (Exprs){
-                                    .tag = Expr_Identifiers,
-                                    .data.identifiers = { .name = name }
-                                };
-                                Exprs idx_expr = (Exprs){
-                                    .tag = Expr_Idx,
-                                    .data.idx = { .base = base, .index = index, .range = name }
-                                };
-                                return (Stmts){
-                                    .tag = Stmt_ExprStmt,
-                                    .data.expr_stmt = { .expr = idx_expr }
-                                };
-                            }
+                case LeftBrackets: {
+                    parser_advance(self); // consume '['
+                    Exprs* index = malloc(sizeof(Exprs));
+                    *index = parser_expr(self);
+                    if (!parser_expect(self, RightBrackets)) parser_sync(self);
+
+                    LexerTokenTag op = parser_current(self).tag;
+                    switch (op) {
+                        case Equalss:
+                        case PlusEqualss:
+                        case MinusEqualss:
+                        case StarEqualss:
+                        case SlashEqualss:
+                        case PercentEqualss:
+                        case AmpersandEqualss:
+                        case PipeEqualss:
+                        case CaretEqualss:
+                        case LeftShiftEqualss:
+                        case RightShiftEqualss: {
+                            parser_advance(self);
+                            Exprs value = parser_expr(self);
+                            Exprs* base = malloc(sizeof(Exprs));
+                            *base = (Exprs){
+                                .tag = Expr_Identifiers,
+                                .data.identifiers = { .name = name }
+                            };
+                            return (Stmts){
+                                .tag = Stmt_Assigns,
+                                .data.assigns = {
+                                    .target = (Exprs){
+                                        .tag = Expr_Idx,
+                                        .data.idx = { .base = base, .index = index, .range = name }
+                                    },
+                                    .op = op,
+                                    .value = value,
+                                }
+                            };
+                        }
+                        default: {
+                            Exprs* base = malloc(sizeof(Exprs));
+                            *base = (Exprs){
+                                .tag = Expr_Identifiers,
+                                .data.identifiers = { .name = name }
+                            };
+                            Exprs idx_expr = (Exprs){
+                                .tag = Expr_Idx,
+                                .data.idx = { .base = base, .index = index, .range = name }
+                            };
+                            return (Stmts){
+                                .tag = Stmt_ExprStmt,
+                                .data.expr_stmt = { .expr = idx_expr }
+                            };
                         }
                     }
+                }
 
 
-                    default: {
+
+                default: {
                         Exprs ident = (Exprs){
                             .tag = Expr_Identifiers,
                             .data = { .identifiers = { .name = name }}
@@ -2912,6 +3052,7 @@ Stmts parser_stmt(Parser* self) {
                 }
             }
 
+            
             case EOFs: {
                 parse_error_eof(self);
                 break;

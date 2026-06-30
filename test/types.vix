@@ -1,0 +1,7 @@
+func main()
+	var p1: *void = malloc(8 as uint)
+	var p2: *int = malloc(8 as uint)
+	var p3: *uint = malloc(8 as uint)
+	var n1: int = 0
+	var n2: uint = 0
+end

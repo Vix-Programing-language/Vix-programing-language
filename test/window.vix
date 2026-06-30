@@ -1,0 +1,98 @@
+@ffi("kernel32.dll")
+extern "C"
+    func GetStdHandle(nStdHandle: int32): *int8
+    func WriteFile(hFile: *int8, lpBuffer: *int8, nNumberOfBytesToWrite: int32, lpNumberOfBytesWritten: *int32, lpOverlapped: *int8): int32
+end
+
+func strlen(s: *int8): int32
+    var i: int32 = 0
+    while s[i] != 0 do
+        i = i + 1
+    end
+    return i
+end
+
+func print(s: *int8): void
+    var stdout: *int8 = GetStdHandle(-11)
+    var written: int32 = 0
+    var len: int32 = strlen(s)
+    WriteFile(stdout, s, len, &written, null)
+    return
+end
+
+struct WNDCLASSEX:
+    cbSize = int32
+    style = int32
+    lpfnWndProc = *int8
+    cbClsExtra = int32
+    cbWndExtra = int32
+    hInstance = *int8
+    hIcon = *int8
+    hCursor = *int8
+    hbrBackground = *int8
+    lpszMenuName = *int8
+    lpszClassName = *int8
+    hIconSm = *int8
+end
+
+@ffi("kernel32.dll")
+extern "C"
+    func GetModuleHandleA(lpModuleName: *int8): *int8
+    func HeapAlloc(hHeap: *int8, dwFlags: int32, dwBytes: int32): *int8
+    func GetProcessHeap(): *int8
+    func GetLastError(): int32
+    func ExitProcess(uExitCode: int32): void
+end
+
+@ffi("user32.dll")
+extern "C"
+    func RegisterClassExA(lpWndClass: *WNDCLASSEX): int32
+    func DefWindowProcA(hWnd: *int8, uMsg: int32, wParam: *int8, lParam: *int8): *int8
+    func CreateWindowExA(dwExStyle: int32, lpClassName: *int8, lpWindowName: *int8, dwStyle: int32, x: int32, y: int32, nWidth: int32, nHeight: int32, hWndParent: *int8, hMenu: *int8, hInstance: *int8, lpParam: *int8): *int8
+    func ShowWindow(hWnd: *int8, nCmdShow: int32): int32
+    func UpdateWindow(hWnd: *int8): int32
+    func GetMessageA(lpMsg: *int8, hWnd: *int8, wMsgFilterMin: int32, wMsgFilterMax: int32): int32
+    func TranslateMessage(lpMsg: *int8): int32
+    func DispatchMessageA(lpMsg: *int8): int32
+end
+
+func main(argc: int32, argv: **char): int
+    var hInstance: *int8 = GetModuleHandleA(null)
+
+    var wc: WNDCLASSEX = WNDCLASSEX {
+        cbSize = 80,
+        style = 0,
+        lpfnWndProc = DefWindowProcA as *int8,
+        cbClsExtra = 0, 
+        cbWndExtra = 0,
+        hInstance = hInstance,
+        hIcon = null,
+        hCursor = null,
+        hbrBackground = null,
+        lpszMenuName = null,
+        lpszClassName = "VixWindow",
+        hIconSm = null
+    }
+
+    var reg: int32 = RegisterClassExA(&wc)
+    if reg == 0 then
+        print("RegisterClassExA failed")
+        return 1
+    end
+
+
+    var hWnd: *int8 = CreateWindowExA(0, "VixWindow", "Vix Window", 13565952, 100, 100, 800, 600, null, null, hInstance, null)
+    var err: int32 = GetLastError()
+    ExitProcess(err)
+
+    ShowWindow(hWnd, 1)
+    UpdateWindow(hWnd)
+
+    var msg: *int8 = HeapAlloc(GetProcessHeap(), 0, 48)
+    while GetMessageA(msg, null, 0, 0) != 0 do
+        TranslateMessage(msg)
+        DispatchMessageA(msg)
+    end
+
+    return 0
+end

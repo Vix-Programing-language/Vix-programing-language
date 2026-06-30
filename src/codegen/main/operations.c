@@ -7,17 +7,15 @@
 
 #include <llvm-c/Core.h>
 
-
-
 LLVMValueRef codegen_expr_field(Register *reg, IR_Expr *expr) {
-    LLVMValueRef obj = codegen_expr(reg, expr->data.field.object);
-    RegisterEntry* type_entry = register_get_by_id(reg, expr->data.field.type_eid.id);
+    LLVMValueRef obj = codegen_expr_addr(reg, expr->data.field.object);
+    RegisterEntry* type_entry = register_from_global(expr->data.field.type_eid.id);
     StructParam* fields = NULL;
     size_t fields_count = 0;
 
-    switch (type_entry->tag) {
-        case Reg_Struct: fields = type_entry->data.strct.fields; fields_count = type_entry->data.strct.fields_count; break;
-        case Reg_Class: fields = type_entry->data._class.fields; fields_count = type_entry->data._class.fields_count; break;
+    switch (expr->data.field.kind) {
+        case FieldOwner_Struct: fields = type_entry->data.strct.fields; fields_count = type_entry->data.strct.fields_count; break;
+        case FieldOwner_Class: fields = type_entry->data._class.fields; fields_count = type_entry->data._class.fields_count; break;
         default: return NULL;
     }
 
@@ -26,15 +24,35 @@ LLVMValueRef codegen_expr_field(Register *reg, IR_Expr *expr) {
 
     for (size_t i = 0; i < fields_count; i++) {
         StringView fname = sv_from_range(fields[i].name);
+
         if (fname.len == field_sv.len && memcmp(fname.ptr, field_sv.ptr, fname.len) == 0) {
             field_index = (int)i;
             break;
         }
     }
 
-    LLVMTypeRef container_type = LLVMGetTypeByName2(llvm_ctx, null_terminated(type_entry->decl_name_range));
-    LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), field_index, 0), };
-    LLVMValueRef gep = LLVMBuildGEP2(llvm_builder, container_type, obj, indices, 2, "field");
+
+    const char* type_name = null_terminated(type_entry->decl_name_range);
+    LLVMTypeRef container_type = LLVMGetTypeByName2(llvm_ctx, type_name);
+
+    if (!obj) {
+        obj = codegen_expr(reg, expr->data.field.object);
+
+        LLVMTypeRef obj_type = LLVMTypeOf(obj);
+        if (LLVMGetTypeKind(obj_type) != LLVMPointerTypeKind) {
+            LLVMValueRef tmp = LLVMBuildAlloca(llvm_builder, container_type, "field_tmp");
+            LLVMBuildStore(llvm_builder, obj, tmp);
+            obj = tmp;
+        }
+    }
+
+    LLVMValueRef obj_ptr = obj;
+
+    LLVMValueRef indices[] = {
+        LLVMConstInt(LLVMInt32Type(), 0, 0),
+        LLVMConstInt(LLVMInt32Type(), field_index, 0),
+    };
+    LLVMValueRef gep = LLVMBuildGEP2(llvm_builder, container_type, obj_ptr, indices, 2, "field");
     LLVMTypeRef field_ty = LLVMStructGetTypeAtIndex(container_type, field_index);
     return LLVMBuildLoad2(llvm_builder, field_ty, gep, "field_load");
 }
@@ -43,15 +61,20 @@ LLVMValueRef codegen_expr_addr(Register *reg, IR_Expr *expr) {
     if (expr->tag == IR_Expr_VarRef) {
         StringView name = sv_from_range(expr->data.var_ref.name);
         RegisterEntry *entry = register_get(reg, name);
-        return symbol_table_get(entry->eid.id);
+
+        if (!entry) return NULL;
+        LLVMValueRef alloca = symbol_table_get(entry->eid.id);
+
+        return alloca;
     }
+
+
     if (expr->tag == IR_Expr_Idx) {
-        LLVMValueRef base  = codegen_expr(reg, expr->data.idx.base);
+        LLVMValueRef base  = codegen_expr(reg, expr->data.idx.object);
         LLVMValueRef index = codegen_expr(reg, expr->data.idx.index);
-        LLVMTypeRef  elem_ty = set_type(expr->ty);
+        LLVMTypeRef  elem_ty = set_custom_type(expr->ty);
         return LLVMBuildGEP2(llvm_builder, elem_ty, base, &index, 1, "idx_addr");
     }
-    return NULL;
 }
 
 
@@ -86,6 +109,19 @@ LLVMValueRef codegen_expr_binop(Register *reg, IR_Expr *expr) {
         case Carets:     return LLVMBuildXor(llvm_builder, lhs, rhs, "xor");
         case LeftShifts: return LLVMBuildShl(llvm_builder, lhs, rhs, "shl");
         case RightShifts: return LLVMBuildLShr(llvm_builder, lhs, rhs, "shr");
+        case Ands: {
+            LLVMValueRef result = LLVMBuildAnd(llvm_builder, lhs, rhs, "and");
+            LLVMTypeRef result_ty = LLVMTypeOf(result);
+            if (LLVMGetTypeKind(result_ty) == LLVMIntegerTypeKind && LLVMGetIntTypeWidth(result_ty) != 1) { return LLVMBuildICmp(llvm_builder, LLVMIntNE, result, LLVMConstInt(result_ty, 0, 0), "and_bool"); }
+            return result;
+        }
+        case Ors: {
+            LLVMValueRef result = LLVMBuildOr(llvm_builder, lhs, rhs, "or");
+            LLVMTypeRef result_ty = LLVMTypeOf(result);
+            if (LLVMGetTypeKind(result_ty) == LLVMIntegerTypeKind && LLVMGetIntTypeWidth(result_ty) != 1) { return LLVMBuildICmp(llvm_builder, LLVMIntNE, result, LLVMConstInt(result_ty, 0, 0), "or_bool"); }
+            return result;
+        }
+
         default: return NULL;
     }
 }
@@ -93,11 +129,21 @@ LLVMValueRef codegen_expr_binop(Register *reg, IR_Expr *expr) {
 LLVMValueRef codegen_expr_unop(Register *reg, IR_Expr *expr) {
     LLVMValueRef operand = codegen_expr(reg, expr->data.unary.operand);
     if (!operand) return NULL;
+
     switch (expr->data.unary.op) {
-        case Minuss: return LLVMBuildNeg(llvm_builder, operand, "neg");
+        case Minuss: {
+            LLVMTypeRef t = LLVMTypeOf(operand);
+            LLVMTypeKind kind = LLVMGetTypeKind(t);
+
+            if (kind == LLVMIntegerTypeKind) { return LLVMBuildNeg(llvm_builder, operand, "neg");
+            } else if (kind == LLVMFloatTypeKind || kind == LLVMDoubleTypeKind) { return LLVMBuildFNeg(llvm_builder, operand, "fneg");
+            } else {
+                LLVMValueRef as_int = LLVMBuildPtrToInt(llvm_builder, operand, LLVMInt32Type(), "ptr_to_int");
+                return LLVMBuildNeg(llvm_builder, as_int, "neg");
+            }
+        }
         case Nots:   return LLVMBuildNot(llvm_builder, operand, "not");
         case Tildes: return LLVMBuildNot(llvm_builder, operand, "bitnot");
         default:     return operand;
     }
 }
-

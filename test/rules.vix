@@ -1,0 +1,254 @@
+// rule 1:
+var a = 10 // value = type:
+// int = num
+// str = string/word
+// char = char
+// float = float num
+// unknow = error
+// null ptr = void
+// rule 2:
+// return type = var type
+func example(): int
+    return 0
+end
+
+var a = example() // int
+
+// rule 3
+// calling a function, param = input var type
+func example(a, b)
+	return
+end
+
+var a = 10 // int
+var b = '!'
+
+example(a, b) // int, char
+
+// rule 4
+// return consern the type
+// if value exposed, or by a variable
+func example()
+    return 10
+    // or
+    return a
+end
+// if the param
+func example(a: int) // or (a)
+    return a
+end
+// if the operation
+func example(a, b)
+    return a + b as float // default to flaot
+end
+// if the function call/structer/enum field
+func example(s: Struct, e: Num)
+    return s.field
+    return e.variant
+    return function_call()
+end
+// if known operation in if stmt
+func example()
+	let a = 10
+    let b = 2
+
+    if a > b then
+    	return true
+    end
+
+    return 124
+end
+// if something or just empty return
+func example(a, b)
+    if a > b then
+    	return true
+    end
+
+    return // bool
+end
+// rule 5
+// enum, struct usage
+struct Simple
+    a: int
+    b: str
+end
+
+let a = Simple.a // int
+// in func call
+return Simple.a
+
+// rule 6
+// genertic rule 
+func example[A](a)
+	return a as A
+end
+
+example(124) // will make genertic a int
+// rule 7
+// if float, number always consern as float
+func example(a, b)
+	if a > b then
+		return 1.2
+        else
+        return 1 as float // automaticlly to flaot
+	end
+end
+// rule 8
+// if always return with no context just return what variable asks for, like if it ask for int return int like that
+func example(a, b)
+	if a > b then
+		return
+	end
+
+    return
+end
+
+var a: int = example(1, 2)
+// if:
+var a: str = example(1, 2)
+var b: int = example(1, 2)
+// in ir:
+func example_main(a, b)
+	if a > b then
+		return
+	end
+
+    return
+end
+
+func example_1(a, b): int
+    example(a, b)
+
+    return
+end
+
+func example_2(a, b): str
+    example(a, b)
+
+    return
+end
+
+var a: str = example_1(1, 2)
+var b: int = example_2(1, 2)
+
+// rule 9
+// if the function calling it self, check the operation: 'if n < 2' return n means it's a int/float
+func fib(n)
+    if n < 2 then return n end
+    return fib(n - 1) + fib(n - 2)
+end
+// rule 10
+// if Shadowing return the variable that in the same scope
+var a = 124
+
+func example()
+    var a = '!'
+
+    return a // will be char as an return type
+end
+
+// rule 11
+// if chaining th variabl rturn typ is first function rturn or any function that rturn th typ
+
+func foo() // nothing
+    return
+end
+
+func bar() // int
+    return 12
+end
+
+func foo() // nothing
+    return
+end
+
+var a = foo().bar().baz()
+
+// if:
+var a = foo().bar().baz() // if foo rturn int and bar rturn 124 it's a int if baz rturn th a as float, all convrt to float at th nd
+// rule 12
+// Comparisons (>, <, ==) always produce bool regardless of operand types. You need a rule that separates arithmetic operators (inherit operand type) from comparison operators (always bool).
+var a = y > b // bool
+
+// rule 13
+// if a variable is copying, cloning anything about another variable as:
+var a = b // if b is int thn a is int
+var a = b.clone() // if b is int then a is int
+var a = b.copy() // same 
+
+// rule 14
+// operations like:
+// +=/-=/*=/all other that can be used only with int/float
+// if operation() and the type is a class is completly other thing, ignore
+
+var a
+
+a += 10 // int
+
+var a: String
+
+a += '!' // ignore if String is a class and has @operation(+=)
+
+// rule 15
+
+
+
+trait Alloc:
+	func alloc_mem(size: int): *void
+	func realloc_mem(target: (int, str), ptr: *void, new_size: int): *void    
+	func dealloc_mem(ptr: *void): void
+end
+
+class Alloc()
+	public func alloc_mem(size: int): *void
+		if size == 0 then
+			return malloc(1 as uint64)
+		end
+
+		var ptr: *void = malloc(size)
+
+		if ptr == 0 then
+			exit(1)
+		end
+
+		return ptr
+	end
+
+	public func realloc_mem(target: (int, str), ptr: *void, new_size: int): *void
+		if new_size == 0 then
+			exit(1)
+		end
+
+		if is_null(ptr) then
+			var new_ptr: *void = alloc_mem(new_size)
+
+			if is_null(new_ptr) then
+				exit(1)
+			end
+
+			return new_ptr
+		end
+
+		var new_ptr: *void = realloc(ptr, new_size as uint64)
+
+		if is_null(new_ptr) then
+			exit(1)
+		end
+
+		return new_ptr
+	end
+
+	public func dealloc_mem(ptr: *void): void
+		if is_null(ptr) then
+			return
+		end
+
+		free(ptr)
+	end
+end
+
+func main()
+	return 0
+end
+
+// void is crashinng th compilr 

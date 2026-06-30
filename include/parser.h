@@ -16,6 +16,7 @@ static inline Parser parser_new(Lexer lex) { return (Parser){.lexer = lex}; }
 
 static inline LexerToken parser_current(Parser* self) { return lexer_peek(&self->lexer); }
 
+
 static inline LexerToken parser_peek_next(Parser* self) {
     if (!self->has_peek) {
         Lexer saved = self->lexer;
@@ -26,12 +27,13 @@ static inline LexerToken parser_peek_next(Parser* self) {
     }
     return self->peek_tok;
 }
-
 static inline LexerToken parser_advance(Parser* self) {
     LexerToken tok = lexer_peek(&self->lexer);
     lexer_advance(&self->lexer);
+    self->has_peek = false;
     return tok;
 }
+
 Stmts parser_stmt(Parser* self);
 Exprs parser_expr(Parser* self);
 #endif

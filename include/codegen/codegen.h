@@ -38,6 +38,8 @@ typedef struct {
 
 
 
+RegisterEntry* register_by_target(StringView name, int* tags, size_t tags_count);
+
 char *null_terminated(SourceRange s) {
     size_t len = s.end - s.start;
     char *buf = malloc(len + 1);
@@ -50,14 +52,14 @@ typedef struct { const char *name; LLVMTypeRef type; LLVMValueRef init; } Codege
 typedef struct { const char *name; LLVMTypeRef type; LLVMValueRef init; } Codegen_Let;
 typedef struct { const char *name; LLVMTypeRef type; LLVMValueRef init; } Codegen_Const;
 typedef struct { const char *name; LLVMTypeRef *params; const char **param_names; uint32_t params_count; LLVMTypeRef return_type; } Codegen_Extern;
-typedef struct { const char *name; size_t variants_count; } Codegen_Enum;
+typedef struct { char* name; size_t variants_count; LLVMTypeRef* payload_types; size_t payload_count; } Codegen_Enum;
 
 static LLVMModuleRef module;
 static LLVMBuilderRef builder;
 
-LLVMContextRef     llvm_ctx;
-LLVMModuleRef      llvm_mod;
-LLVMBuilderRef     llvm_builder;
+LLVMContextRef llvm_ctx;
+LLVMModuleRef llvm_mod;
+LLVMBuilderRef llvm_builder;
 const char *codegen_source = NULL;
 
 LLVMTypeRef str_type;
@@ -75,6 +77,34 @@ void codegen_new(const char *filename, const char *source) {
     symbol_table_init();
 }
 
+LLVMTypeRef set_custom_type(Type t);
+LLVMTypeRef get_or_create_enum_type(RegisterEntry* enum_entry, const char* name);
+
+
+LLVMTypeRef get_or_create_enum_type(RegisterEntry* enum_entry, const char* name) {
+    LLVMTypeRef existing = LLVMGetTypeByName2(llvm_ctx, name);
+    if (existing) return existing;
+
+    size_t max_fields = 0;
+    for (size_t i = 0; i < enum_entry->data.enm.variants_count; i++) if (enum_entry->data.enm.variants[i].fields_count > max_fields) max_fields = enum_entry->data.enm.variants[i].fields_count;
+
+    size_t total = 1 + max_fields;
+    LLVMTypeRef* body = malloc(sizeof(LLVMTypeRef) * total);
+    body[0] = LLVMInt32TypeInContext(llvm_ctx);
+
+    for (size_t i = 0; i < enum_entry->data.enm.variants_count; i++) {
+        if (enum_entry->data.enm.variants[i].fields_count == max_fields) {
+            for (size_t j = 0; j < max_fields; j++) body[j + 1] = set_custom_type(enum_entry->data.enm.variants[i].fields[j].type);
+            break;
+        }
+    }
+
+    LLVMTypeRef enum_ty = LLVMStructCreateNamed(llvm_ctx, name);
+    LLVMStructSetBody(enum_ty, body, (unsigned)total, 0);
+    free(body);
+    return enum_ty;
+}
+
 LLVMTypeRef set_type(Type t) {
     switch (t.tag) {
         case Type_Int:   return LLVMIntTypeInContext(llvm_ctx, t.data.int_t.bits);
@@ -90,23 +120,60 @@ LLVMTypeRef set_type(Type t) {
         case Type_RawPtr: return LLVMPointerType(LLVMInt8TypeInContext(llvm_ctx), 0);
         case Type_Tuple: {
             LLVMTypeRef *elems = malloc(sizeof(LLVMTypeRef) * t.data.tuple.elems_count);
-            for (size_t i = 0; i < t.data.tuple.elems_count; i++) elems[i] = set_type(t.data.tuple.elems[i]);
+            for (size_t i = 0; i < t.data.tuple.elems_count; i++) elems[i] = set_custom_type(t.data.tuple.elems[i]);
             LLVMTypeRef result = LLVMStructTypeInContext(llvm_ctx, elems, t.data.tuple.elems_count, 0);
             free(elems);
             return result;
         }
 
-        case Type_Custom:  return LLVMGetTypeByName2(llvm_ctx, null_terminated(t.data.custom.name));
+        case Type_FnPtr: {
+            LLVMTypeRef *param_tys = malloc(sizeof(LLVMTypeRef) * t.data.fn_ptr.params_count);
+            for (size_t i = 0; i < t.data.fn_ptr.params_count; i++) param_tys[i] = set_custom_type(t.data.fn_ptr.params[i]);
+            
+            LLVMTypeRef ret_ty = t.data.fn_ptr.ret ? set_custom_type(*t.data.fn_ptr.ret) : LLVMVoidTypeInContext(llvm_ctx);
+            LLVMTypeRef fn_ty = LLVMFunctionType(ret_ty, param_tys, t.data.fn_ptr.params_count, 0);
+            free(param_tys);
+            return LLVMPointerType(fn_ty, 0);
+        }
+        case Type_Custom: { 
+            const char* type_name = null_terminated(t.data.custom.name);
+            LLVMTypeRef struct_ty = LLVMGetTypeByName2(llvm_ctx, type_name);
+            if (struct_ty) return struct_ty;
+
+            StringView sv = { .ptr = type_name, .len = strlen(type_name) };
+            int tags[] = { Reg_Enum };
+            RegisterEntry* enum_entry = register_by_target(sv, tags, 1);
+            if (enum_entry) return get_or_create_enum_type(enum_entry, type_name);
+
+            return LLVMPointerType(LLVMInt8TypeInContext(llvm_ctx), 0); // last-resort fallback only for genuinely unknown types
+        }
         default: return LLVMInt32TypeInContext(llvm_ctx);
     }
 }
 
+LLVMTypeRef set_custom_type(Type t) {
+    if (t.tag == Type_Custom) {
+        const char* sname = null_terminated(t.data.custom.name);
+        LLVMTypeRef struct_ty = LLVMGetTypeByName2(llvm_ctx, sname);
+        if (struct_ty) {
+            return struct_ty;
+        }
+
+        StringView sv = { .ptr = sname, .len = strlen(sname) };
+        int tags[] = { Reg_Enum };
+        RegisterEntry* enum_entry = register_by_target(sv, tags, 1);
+        if (enum_entry) {
+            return get_or_create_enum_type(enum_entry, sname);
+        }
+    }
+    return set_type(t);
+}
 
 LLVMTypeRef *set_fields(IR_FieldDef *fields, size_t count) {
     ARR(LLVMTypeRef) field_types = {0};
 
     for (size_t i = 0; i < count; i++) {
-        ARR_PUSH(field_types, set_type(fields[i].ty));
+        ARR_PUSH(field_types, set_custom_type(fields[i].ty));
     }
 
     return field_types.data;
@@ -116,7 +183,7 @@ LLVMTypeRef *set_param(IR_Param *param, uint32_t count) {
     ARR(LLVMTypeRef) llvm_param_types = {0};
 
     for (size_t i = 0; i < count; i++) {
-        ARR_PUSH(llvm_param_types, set_type(param[i].ty));
+        ARR_PUSH(llvm_param_types, set_custom_type(param[i].ty));
     }
 
     return llvm_param_types.data;
@@ -147,6 +214,7 @@ LLVMValueRef codegen_expr_call(Register *reg, IR_Expr *expr);
 LLVMValueRef codegen_expr_tuple(Register *reg, IR_Expr *expr);
 LLVMValueRef codegen_expr_tupleindex(Register *reg, IR_Expr *expr);
 LLVMValueRef codegen_expr_index(Register *reg, IR_Expr *expr);
+LLVMValueRef codegen_expr_make_struct(Register *reg, IR_Expr *expr);
 
 LLVMValueRef codegen_expr_var(Register *reg, IR_Expr *expr);
 LLVMValueRef codegen_expr_method(Register *reg, IR_Expr *expr);
@@ -158,7 +226,17 @@ void codegen_stmts(Register *reg, IR_Stmt *stmts, size_t count);
 
 void codegen_generate_var(uint32_t id, Codegen_Var v);
 void codegen_generate_let(uint32_t id, Codegen_Let l);
-void codegen_generate_const(uint32_t id, Codegen_Const c);
+void codegen_generate_const(uint32_t id, Codegen_Const c, bool globle);
+void codegen_predeclare_function(Codegen_FuncDef fn);
+LLVMValueRef codegen_expr_make_enum(Register *reg, IR_Expr *expr);
 
 
+void codegen_generate_struct(Codegen_Struct s);
+void codegen_generate_extern(Codegen_Extern e);
+void codegen_generate_enum(Codegen_Enum e);
+void codegen_generate_if(Register *reg, LLVMValueRef cond, struct IR_Stmt *body, size_t body_count,struct IR_Stmt *else_body, size_t else_count);
+void codegen_generate_while(Register *reg, struct IR_Expr *cond_expr, struct IR_Stmt *body, size_t body_count);
+void codegen_generate_let(uint32_t id, Codegen_Let l);
+void codegen_generate_for(Register *reg, struct IR_Expr *iter_expr, struct IR_Stmt *body, size_t body_count);
+void codegen_generate_match(Register *reg, LLVMValueRef match_val, IR_MatchArm *arms, size_t arms_count, struct IR_Stmt *default_body, size_t default_body_count);
 #endif

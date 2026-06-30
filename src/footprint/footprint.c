@@ -17,7 +17,7 @@ static void strtab_free(StrTab* st);
 static uint32_t strtab_push(StrTab* st, const char* ptr, size_t len);
 static uint32_t strtab_push_cstr(StrTab* st, const char* s);
 PackWriter pack_writer_new(void);
-void       pack_writer_free(PackWriter* w);
+void pack_writer_free(PackWriter* w);
 
 
 const char* const SG_EXT[PACK_SG_COUNT] = {

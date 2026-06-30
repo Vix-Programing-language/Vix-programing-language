@@ -10,11 +10,14 @@
 #include "ir.h"
 #include "codegen.h"
 #include "helper.h"
+#include "generic.h"
+
 
 #include <llvm-c/Analysis.h>
 #include <llvm-c/TargetMachine.h>
 #include <llvm-c/Target.h>
 
+void global_registry_init(void);
 void print_register_entry(Register* reg, RegisterEntry* e, int depth);
 IR_Expr lower_expr(Register *reg, RegisterEntry *entry);
 IR_Expr *ir_expr_alloc(IR_Expr expr);
@@ -32,7 +35,7 @@ void ir_print_module(IR_Module *mod);
 IR_Def lower_function(Register *reg, uint32_t id);
 IR_Module lower_stmt(Register *reg, IR_Module mod, IR_StmtArr *stmts_out);
 IR_Module codegen_def(Register *reg, IR_Module mod);
-
+void cleanup_unresolved_generics(Register* global);
 static bool expr_exists(Exprs expr) {
     return expr.tag != 0 || expr.data.literals.range.start != NULL;
 }
@@ -53,12 +56,40 @@ static void print_type_inline(Type t) {
         case Type_Float:
             printf("float%d", t.data.float_t.bits);
             break;
-        case Type_Custom:
-            printf("%.*s",
-                (int)(t.data.custom.name.end - t.data.custom.name.start),
-                t.data.custom.name.start);
+        case Type_Array:
+            printf("arr[%zu]", t.data.array_t.len);
+            if (t.data.array_t.inner) {
+                printf("<");
+                print_type_inline(*t.data.array_t.inner);
+                printf(">");
+            }
             break;
-        default: printf("?"); break;
+
+
+case Type_Custom:
+    printf("%.*s",
+        (int)(t.data.custom.name.end - t.data.custom.name.start),
+        t.data.custom.name.start);
+
+    if (t.data.custom.generic_args_count > 0) {
+        printf("[");
+        for (size_t i = 0; i < t.data.custom.generic_args_count; i++) {
+
+            ptrdiff_t len = t.data.custom.generic_args[i].end - t.data.custom.generic_args[i].start;
+            printf("[DEBUG] arg[%zu] len=%td\n", i, len);
+
+            if (len <= 0 || len > 256) {
+                printf("<BAD_LEN>");
+                continue;
+            }
+
+            printf("%.*s", (int)len, t.data.custom.generic_args[i].start);
+            if (i + 1 < t.data.custom.generic_args_count) printf(", ");
+        }
+        printf("]");
+    }
+    break;            default: printf("?(tag=%d)", t.tag); break;
+
     }
 }
 
@@ -87,8 +118,8 @@ static void print_register_entry(Register* reg, RegisterEntry* e, int depth) {
     printf("Idx (base_id=%u index_id=%u)\n",
         e->data.idx.base_id, e->data.idx.index_id);
     {
-        RegisterEntry* base  = register_get_by_id(reg, e->data.idx.base_id);
-        RegisterEntry* index = register_get_by_id(reg, e->data.idx.index_id);
+        RegisterEntry* base  = register_from_scope(reg, e->data.idx.base_id);
+        RegisterEntry* index = register_from_scope(reg, e->data.idx.index_id);
         if (base)  print_register_entry(reg, base,  depth + 1);
         if (index) print_register_entry(reg, index, depth + 1);
     }
@@ -132,7 +163,7 @@ static void print_register_entry(Register* reg, RegisterEntry* e, int depth) {
 
             case Reg_If:
             printf("if {\n");
-            if (e->data.if_.cond_id) print_register_entry(reg, register_get_by_id(e->data.if_.cond_child, e->data.if_.cond_id), depth + 1);
+            if (e->data.if_.cond_id) print_register_entry(reg, register_from_scope(e->data.if_.cond_child, e->data.if_.cond_id), depth + 1);
             print_child_registry(e->data.if_.then_child, depth + 1);
             print_child_registry(e->data.if_.else_child, depth + 1);
             for (int i = 0; i < depth; i++) printf("  ");
@@ -141,7 +172,7 @@ static void print_register_entry(Register* reg, RegisterEntry* e, int depth) {
 
         case Reg_Elif:
             printf("elif {\n");
-            if (e->data.if_.cond_id) print_register_entry(reg, register_get_by_id(e->data.if_.cond_child, e->data.if_.cond_id), depth + 1);
+            if (e->data.if_.cond_id) print_register_entry(reg, register_from_scope(e->data.if_.cond_child, e->data.if_.cond_id), depth + 1);
             print_child_registry(e->data.if_.then_child, depth + 1);
             print_child_registry(e->data.if_.else_child, depth + 1);
             for (int i = 0; i < depth; i++) printf("  ");
@@ -151,7 +182,7 @@ static void print_register_entry(Register* reg, RegisterEntry* e, int depth) {
 case Reg_While:
     printf("while {\n");
     if (e->data.while_.cond_id) {
-        RegisterEntry* cond = register_get_by_id(e->data.while_.cond_child, e->data.while_.cond_id);
+        RegisterEntry* cond = register_from_scope(e->data.while_.cond_child, e->data.while_.cond_id);
         printf("[printer] while cond lookup id=%u -> %p\n", e->data.while_.cond_id, (void*)cond);
         if (cond) print_register_entry(e->data.while_.cond_child, cond, depth + 1);
     }
@@ -198,7 +229,7 @@ case Reg_While:
 
         case Reg_ExprStmt: {
             printf("EXPR_STMT\n");
-            RegisterEntry* inner = register_get_by_id(reg, e->data.expr_stmt_.expr_id);
+            RegisterEntry* inner = register_from_scope(reg, e->data.expr_stmt_.expr_id);
             if (inner) print_register_entry(reg, inner, depth + 1);
             break;
         }
@@ -232,7 +263,7 @@ case Reg_While:
                     printf("ARG[%zu] id=%u [no child_reg]\n", i, e->data.expr_function_call.arg_ids[i]);
                     continue;
                 }
-                RegisterEntry* arg = register_get_by_id(e->data.expr_function_call.child_reg,
+                RegisterEntry* arg = register_from_scope(e->data.expr_function_call.child_reg,
                     e->data.expr_function_call.arg_ids[i]);
                 if (arg) {
                     printf("ARG[%zu]:\n", i);
@@ -245,8 +276,8 @@ case Reg_While:
 
 case Reg_ExprBinaryOp: {
     printf("BinaryOp (tag=%d)\n", e->data.expr_binary_op.op);
-    RegisterEntry* bleft  = register_get_by_id(reg, e->data.expr_binary_op.left_id);
-    RegisterEntry* bright = register_get_by_id(reg, e->data.expr_binary_op.right_id);
+    RegisterEntry* bleft  = register_from_scope(reg, e->data.expr_binary_op.left_id);
+    RegisterEntry* bright = register_from_scope(reg, e->data.expr_binary_op.right_id);
     if (bleft)  print_register_entry(reg, bleft,  depth + 1);
     if (bright) print_register_entry(reg, bright, depth + 1);
     break;
@@ -366,18 +397,17 @@ void print_expression(Exprs expr, int depth) {
     if (expr.data.idx.base)  print_expression(*expr.data.idx.base,  depth + 1);
     if (expr.data.idx.index) print_expression(*expr.data.idx.index, depth + 1);
     break;
-        case Expr_Function:
-    printf("Call: %.*s (param_count=%zu)\n",
+case Expr_Function:
+    printf("Call: %.*s (param_count=%zu, generic_count=%zu)\n",
         (int)(expr.data.function_call.name.end - expr.data.function_call.name.start),
         expr.data.function_call.name.start,
-        expr.data.function_call.param_count);
-    for (size_t i = 0; i < expr.data.function_call.param_count; i++) {
+        expr.data.function_call.param_count,
+        expr.data.function_call.generic_params_count);
+    for (size_t i = 0; i < expr.data.function_call.generic_params_count; i++) {
         for (int d = 0; d < depth + 1; d++) printf("  ");
-        printf("ARG[%zu] name_len=%td value_tag=%d\n",
-            i,
-            expr.data.function_call.param[i].name.end - expr.data.function_call.param[i].name.start,
-            expr.data.function_call.param[i].value.tag);
-        print_expression(expr.data.function_call.param[i].value, depth + 2);
+        printf("GENERIC[%zu]: %.*s\n", i,
+            (int)(expr.data.function_call.generic_params[i].end - expr.data.function_call.generic_params[i].start),
+            expr.data.function_call.generic_params[i].start);
     }
     
     break;
@@ -440,30 +470,23 @@ for (size_t i = 0; i < stmt.data.extern_.funcs_count; i++) {
             printf("EXTERN_FUNC: [bad name range]\n"); continue;
         }
         
-        const char* ret_start = fn->return_type.start;
-        const char* ret_end   = fn->return_type.end;
-        if (!ret_start || !ret_end || ret_end < ret_start) {
-            printf("EXTERN_FUNC: %.*s -> [bad return_type range]\n",
-                (int)(fn->name.end - fn->name.start), fn->name.start);
-        } else {
-            printf("EXTERN_FUNC: %.*s -> %.*s\n",
-                (int)(fn->name.end - fn->name.start), fn->name.start,
-                (int)(ret_end - ret_start), ret_start);
-        }
+        print_type_inline(fn->return_type);
+
+        for (int d = 0; d < depth + 1; d++) printf("  ");
+        printf("EXTERN_FUNC: %.*s -> ",
+            (int)(fn->name.end - fn->name.start), fn->name.start);
+        print_type_inline(fn->return_type);
+        printf("\n");
 
         if (!fn->params) { printf("  [params is NULL, count=%zu]\n", fn->params_count); continue; }
 
         for (size_t j = 0; j < fn->params_count; j++) {
             for (int d = 0; d < depth + 2; d++) printf("  ");
             Param* p = &fn->params[j];
-            if (!p->c_type.start || !p->c_type.end || p->c_type.end < p->c_type.start) {
-                printf("PARAM: %.*s: [bad c_type range]\n",
-                    (int)(p->name.end - p->name.start), p->name.start);
-            } else {
-                printf("PARAM: %.*s: ", (int)(p->name.end - p->name.start), p->name.start);
-                print_type(p->type_tree);
-                printf("\n");
-            }
+            printf("PARAM: %.*s: ", (int)(p->name.end - p->name.start), p->name.start);
+            print_type_inline(p->type);
+            printf("\n");
+
         }
     }
     break;
@@ -476,11 +499,11 @@ for (size_t i = 0; i < stmt.data.extern_.funcs_count; i++) {
                 stmt.data.functions.is_unsafe ? " [unsafe]" : "");
             for (size_t i = 0; i < stmt.data.functions.params_count; i++) {
                 for (int d = 0; d < depth + 1; d++) printf("  ");
-                printf("PARAM: %.*s: %.*s\n",
+                printf("PARAM: %.*s: ",
                     (int)(stmt.data.functions.params[i].name.end - stmt.data.functions.params[i].name.start),
-                    stmt.data.functions.params[i].name.start,
-                    (int)(stmt.data.functions.params[i].c_type.end - stmt.data.functions.params[i].c_type.start),
-                    stmt.data.functions.params[i].c_type.start);
+                    stmt.data.functions.params[i].name.start);
+                print_type_inline(stmt.data.functions.params[i].type);
+                printf("\n");
             }
             for (size_t i = 0; i < stmt.data.functions.body_count; i++)
                 print_statement(stmt.data.functions.body[i], depth + 1);
@@ -613,9 +636,11 @@ for (size_t i = 0; i < stmt.data.extern_.funcs_count; i++) {
             print_expression(stmt.data.returns.expr, depth + 1);
             break;
         case Stmt_Vars:
-            printf("VAR: %.*s\n",
+            printf("VAR: %.*s : ",
                 (int)(stmt.data.vars.name.end - stmt.data.vars.name.start),
                 stmt.data.vars.name.start);
+            print_type_inline(stmt.data.vars.type);
+            printf("\n");
             if (expr_exists(stmt.data.vars.value))
                 print_expression(stmt.data.vars.value, depth + 1);
             break;
@@ -652,11 +677,25 @@ for (size_t i = 0; i < stmt.data.extern_.funcs_count; i++) {
     }
 }
 
+
 int main(int argc, char **argv) {
-    if (argc < 3) {
-        printf("Usage: vix run <filename.vix>\n");
+    if (argc < 2) {
+        printf("Usage: vix <command> [args]\n");
+        printf("Commands:\n");
+        printf("  run <file.vix>   Compile and execute\n");
+        printf("  test             Run internal fuzz tests\n");
         return 1;
     }
+
+    const char* cmd = argv[1];
+
+    if (strcmp(cmd, "run") == 0) {
+        if (argc < 3) {
+            printf("Usage: vix run <filename.vix>\n");
+            return 1;
+        }
+    }
+
 
     const char *filename = argv[2];
     char *source = read_file_to_string(filename);
@@ -686,12 +725,23 @@ int main(int argc, char **argv) {
 for (size_t i = 0; i < program.len; i++)
     print_statement(program.data[i], 0);
 
-    // 1. Initial Registration Pass
+    printf("\n=== Entre Register ===\n");
     IDCounter counter = { .next_id = 1 };
+    global_registry_init();
+
+
     Register global_reg  = register_new(NULL, &counter);
+    global_reg_ptr = &global_reg;
     FuncBodyList bodies = register_body(program.data, program.len, &global_reg, &errors);
 
-// 3. Print Register after substitution
+
+    GenericTables g = generic_new();
+
+    check_generic(&global_reg, &g);
+
+
+    generic_free(&g);
+
     printf("\n=== REGISTER (AFTER GENERIC CHANGE) ===\n");
     REG_FOREACH(&global_reg, entry, {
         print_register_entry(&global_reg, entry, 0);
@@ -701,29 +751,28 @@ for (size_t i = 0; i < program.len; i++)
     IR_Module ir_mod = lower_stmt(&global_reg, (IR_Module){ .name = (char*)filename }, NULL);
     ir_print_module(&ir_mod);
 
-    printf("\n=== CODEGEN ===\n");
-
-    printf("[codegen] calling codegen_new...\n");
-    codegen_new(filename, source);
-    printf("[codegen] llvm_mod=%p llvm_builder=%p\n", (void*)llvm_mod, (void*)llvm_builder);
-
-    printf("[codegen] calling codegen_stmt, defs count=%zu\n", ir_mod.defs.len);
-    printf("[codegen] ir_mod.defs.len=%zu\n", ir_mod.defs.len);
-printf("[codegen] ir_mod.defs.data=%p\n", (void*)ir_mod.defs.data);
-printf("[codegen] ir_mod.name=%s\n", ir_mod.name ? ir_mod.name : "NULL");
-fflush(stdout);
-codegen_def(&global_reg, ir_mod);
-    printf("[codegen] codegen_stmt done\n");
-
-    printf("[codegen] printing module...\n");
 
     
-    printf("[codegen] verifying module...\n");
+    printf("[dump] global register table:\n");
+for (khint_t i = 0; i != kh_end(global_reg.table); i++) {
+    if (!kh_exist(global_reg.table, i)) continue;
+    StringView k = kh_key(global_reg.table, i);
+    RegisterEntry* v = kh_val(global_reg.table, i);
+
+    printf("[dump]   key='%.*s' tag=%d eid=%u\n",
+        (int)k.len, k.ptr, v->tag, v->eid.id);
+}
+
+    printf("\n=== CODEGEN ===\n");
+    codegen_new(filename, source);
+
+fflush(stdout);
+codegen_def(&global_reg, ir_mod);
+
 char *verify_err = NULL;
 if (LLVMVerifyModule(llvm_mod, LLVMReturnStatusAction, &verify_err)) {
     fprintf(stderr, "[codegen] LLVM module verification FAILED:\n%s\n", verify_err);
     LLVMDisposeMessage(verify_err);
-    // Still continue to print IR for debugging, but don't try to emit/link broken IR.
     char *ir_str = LLVMPrintModuleToString(llvm_mod);
     if (ir_str) { printf("%s\n", ir_str); LLVMDisposeMessage(ir_str); }
     return 1;
@@ -764,8 +813,6 @@ if (dot && strcmp(dot, ".vix") == 0) {
     *dot = '\0';
 }
 
-// Replace the "printing module" section with this:
-printf("[codegen] writing IR to main.ll...\n");
 char ll_path[1024];
 snprintf(ll_path, sizeof(ll_path), "%s.ll", base_name);
 char *ir_str = LLVMPrintModuleToString(llvm_mod);
@@ -776,7 +823,6 @@ if (!ir_str) {
     if (ll_file) {
         fputs(ir_str, ll_file);
         fclose(ll_file);
-        printf("[codegen] IR written to %s\n", ll_path);
     } else {
         fprintf(stderr, "[codegen] ERROR: could not open %s for writing\n", ll_path);
     }
@@ -795,21 +841,17 @@ if (LLVMTargetMachineEmitToFile(target_machine, llvm_mod, obj_path, LLVMObjectFi
     LLVMDisposeMessage(emit_err);
     return 1;
 }
-printf("[codegen] wrote object file: %s\n", obj_path);
 
 char link_cmd[2048];
 snprintf(link_cmd, sizeof(link_cmd),
-    "clang \"%s\" -o \"%s\" -Wl,/GUARD:NO,/ENTRY:main -lkernel32 -luser32 -lucrt -lvcruntime", 
+    "clang \"%s\" -o \"%s\" -fuse-ld=lld -Wl,/GUARD:NO -lkernel32 -luser32 -lmsvcrt",
     obj_path, bin_path);
-    
-printf("[codegen] linking: %s\n", link_cmd);
 
 int link_status = system(link_cmd);
 if (link_status != 0) {
     fprintf(stderr, "[codegen] Link step failed (exit code %d)\n", link_status);
     return 1;
 }
-printf("[codegen] binary written: %s\n", bin_path);
 
 LLVMDisposeTargetMachine(target_machine);
 LLVMDisposeMessage(target_triple);
@@ -821,5 +863,11 @@ LLVMDisposeMessage(target_triple);
     ARR_FREE(ir_mod.defs);  
     file_manager_free(&files);
     free(source);
+
+    #ifdef VIX_LEAK_TRACK
+        leak_track_report();
+    #endif
+        return 0;
+
     return 0;
 }

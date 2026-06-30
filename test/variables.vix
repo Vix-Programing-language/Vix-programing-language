@@ -1,0 +1,1113 @@
+struct Vec2:
+    x = int
+    y = int
+end
+
+struct Vec3:
+    x = int
+    y = int
+    z = int
+end
+
+struct Rect:
+    x = int
+    y = int
+    width  = int
+    height = int
+end
+
+struct Color:
+    r = int
+    g = int
+    b = int
+    a = int
+end
+
+struct Range:
+    lo = int
+    hi = int
+end
+
+struct Matrix2x2:
+    a = int
+    b = int
+    c = int
+    d = int
+end
+
+struct Pair:
+    first  = int
+    second = int
+end
+
+struct Stats:
+    min   = int
+    max   = int
+    sum   = int
+    count = int
+end
+
+struct Flags:
+    active  = bool
+    visible = bool
+    locked  = bool
+    dirty   = bool
+end
+
+struct Particle:
+    x    = int
+    y    = int
+    vx   = int
+    vy   = int
+    life = int
+    dead = bool
+end
+
+struct Node:
+    value = int
+    left  = int
+    right = int
+    depth = int
+end
+
+struct Token:
+    kind  = int
+    start = int
+    stop  = intF 
+    line  = int
+end
+
+struct BBox:
+    min_x = int
+    min_y = int
+    max_x = int
+    max_y = int
+end
+
+enum Direction:
+    North
+    South
+    East
+    West
+end
+
+enum Status:
+    Ok(code: int)
+    Err(msg: string)
+    Pending
+    Timeout(ms: int)
+end
+
+enum Shape:
+    Circle(radius: int)
+    Rect(w: int, h: int)
+    Triangle(base: int, height: int)
+    Point
+end
+
+enum Op:
+    Add(lhs: int, rhs: int)
+    Sub(lhs: int, rhs: int)
+    Mul(lhs: int, rhs: int)
+    Div(lhs: int, rhs: int)
+    Mod(lhs: int, rhs: int)
+    Neg(val: int)
+    Not(val: bool)
+end
+
+enum Color:
+    Red
+    Green
+    Blue
+    Custom(r: int, g: int, b: int)
+end
+
+enum Priority:
+    Low(weight: int)
+    Medium(weight: int)
+    High(weight: int)
+    Critical(weight: int, reason: string)
+end
+
+enum Tree:
+    Leaf(value: int)
+    Branch(left: int, right: int, value: int)
+    Empty
+end
+
+class Vec2(x: int, y: int)
+    var _x: int
+    var _y: int
+
+    func get_x(): int   return _x end
+    func get_y(): int   return _y end
+    func is_zero(): bool return _x == 0 and _y == 0 end
+    func len_sq(): int  return _x * _x + _y * _y end
+
+    @operation("+")
+    func add(other: Vec2): Vec2
+        var rx: int = _x + other.get_x()
+        var ry: int = _y + other.get_y()
+        return Vec2(x: rx, y: ry)
+    end
+
+    @operation("-")
+    func sub(other: Vec2): Vec2
+        var rx: int = _x - other.get_x()
+        var ry: int = _y - other.get_y()
+        return Vec2(x: rx, y: ry)
+    end
+
+    @operation("==")
+    func eq(other: Vec2): bool
+        return _x == other.get_x() and _y == other.get_y()
+    end
+
+    @operation("!=")
+    func neq(other: Vec2): bool
+        return _x != other.get_x() or _y != other.get_y()
+    end
+end
+
+class Counter(start: int, step: int)
+    var count: int
+    var total: int
+
+    func get(): int         return count end
+    func get_total(): int   return total end
+    func is_done(): bool    return count >= start end
+    func at_zero(): bool    return count == 0 end
+    func overflowed(): bool return count > start end
+
+    func tick(): int
+        count += step
+        total += count
+        return count
+    end
+
+    func reset(): int
+        var old: int = count
+        count = 0
+        total = 0
+        return old
+    end
+
+    func clamp_to(hi: int): int
+        if count > hi then
+            count = hi
+        end
+        return count
+    end
+end
+
+class Accumulator(init: int)
+    var value: int
+    var ops:   int
+
+    func get(): int      return value end
+    func op_count(): int return ops end
+    func is_neg(): bool  return value < 0 end
+    func is_pos(): bool  return value > 0 end
+    func is_zero(): bool return value == 0 end
+
+    @operation("+")
+    func add(n: int): int
+        value += n
+        ops   += 1
+        return value
+    end
+
+    @operation("-")
+    func sub(n: int): int
+        value -= n
+        ops   += 1
+        return value
+    end
+
+    @operation("*")
+    func mul(n: int): int
+        value *= n
+        ops   += 1
+        return value
+    end
+
+    @operation("/")
+    func div(n: int): int
+        if n != 0 then
+            value /= n
+        end
+        ops += 1
+        return value
+    end
+
+    @operation(%)
+    func rem(n: int): int
+        if n != 0 then
+            value %= n
+        end
+        ops += 1
+        return value
+    end
+
+    @operation(&)
+    func band(n: int): int
+        value &= n
+        ops   += 1
+        return value
+    end
+
+    @operation(|)
+    func bor(n: int): int
+        value |= n
+        ops   += 1
+        return value
+    end
+
+    @operation(^)
+    func bxor(n: int): int
+        value ^= n
+        ops   += 1
+        return value
+    end
+end
+
+class RangeChecker(lo: int, hi: int)
+    var _lo: int
+    var _hi: int
+    var hits: int
+    var misses: int
+
+    func in_range(v: int): bool
+        if v >= _lo and v <= _hi then
+            hits += 1
+            return true
+        else
+            misses += 1
+            return false
+        end
+    end
+
+    func clamp(v: int): int
+        if v < _lo then return _lo end
+        if v > _hi then return _hi end
+        return v
+    end
+
+    func span(): int  return _hi - _lo end
+    func mid(): int   return (_lo + _hi) / 2 end
+    func empty(): bool return _lo >= _hi end
+end
+
+class BitField(width: int)
+    var data:  int
+    var _mask: int
+
+    func get(): int       return data end
+    func set(v: int): int data = v & _mask  return data end
+    func clear(): int     data = 0          return data end
+
+    func bit_set(pos: int): bool   return (data >> pos) & 1 != 0 end
+    func bit_clear(pos: int): bool return (data >> pos) & 1 == 0 end
+
+    func set_bit(pos: int): int
+        data |= 1 << pos
+        return data
+    end
+
+    func clr_bit(pos: int): int
+        data &= ~(1 << pos)
+        return data
+    end
+
+    func tog_bit(pos: int): int
+        data ^= 1 << pos
+        return data
+    end
+
+    func popcount(): int
+        var n:   int = data
+        var cnt: int = 0
+        for i in width do
+            if (n >> i) & 1 != 0 then
+                cnt += 1
+            end
+        end
+        return cnt
+    end
+end
+
+global G_ZERO:      int    = 0
+global G_ONE:       int    = 1
+global G_NEG:       int    = -1
+global G_MAX_INT:   int    = 2147483647
+global G_MIN_INT:   int    = -2147483648
+global G_BYTE_MASK: int    = 0xFF
+global G_WORD_MASK: int    = 0xFFFF
+global G_FLAG:      bool   = true
+global G_TOGGLE:    bool   = false
+global G_PI_APPROX: float  = 3.14
+global G_E_APPROX:  float  = 2.71
+global G_LABEL:     string = "global"
+global G_EMPTY:     string = ""
+global G_CHAR_A:    char   = 'A'
+global G_CHAR_Z:    char   = 'z'
+global G_I8_MAX:    int8   = 127
+global G_I16_MAX:   int16  = 32767
+global G_I32_MAX:   int32  = 2147483647
+global G_I64_BIG:   int64  = 9999999999
+global G_F32:       float32 = 1.5
+global G_F64:       float64 = 2.718281828
+
+global G_SUM:    int = 1 + 2 + 3 + 4 + 5
+global G_PROD:   int = 2 * 3 * 4
+global G_BITS:   int = 0xFF & 0x0F
+global G_SHIFT:  int = 1 << 8
+global G_RSHIFT: int = 256 >> 2
+global G_XOR:    int = 0xAA ^ 0x55
+global G_OR:     int = 0xF0 | 0x0F
+global G_COMBO:  int = (1 << 4) | (1 << 2) | 1
+
+const MAX_ITER:   int    = 1000
+const MIN_ITER:   int    = 1
+const BUF_SIZE:   int    = 4096
+const PAGE_SIZE:  int    = 4096
+const WORD_BITS:  int    = 32
+const BYTE_BITS:  int    = 8
+const NIBBLE:     int    = 4
+const MASK_8:     int    = 255
+const MASK_16:    int    = 65535
+const SHIFT_1:    int    = 2
+const SHIFT_2:    int    = 4
+const SHIFT_3:    int    = 8
+const SHIFT_4:    int    = 16
+const THRESHOLD:  int    = 50
+const LIMIT:      int    = 100
+const HALF:       int    = 50
+const QUARTER:    int    = 25
+const TRUE_FLAG:  bool   = true
+const FALSE_FLAG: bool   = false
+const ZERO_F:     float  = 0.0
+const ONE_F:      float  = 1.0
+const PI:         float  = 3.14159
+const E:          float  = 2.71828
+const LN2:        float  = 0.693
+const SQRT2:      float  = 1.414
+const EMPTY_STR:  string = ""
+const SPACE:      string = " "
+const NL:         string = "\n"
+const NULL_CHAR:  char   = '\0'
+const TAB_CHAR:   char   = '\t'
+const I8_MIN:     int8   = -128
+const I8_MAX:     int8   = 127
+const I16_MIN:    int16  = -32768
+const I16_MAX:    int16  = 32767
+const I32_MIN:    int32  = -2147483648
+const I32_MAX:    int32  = 2147483647
+const I64_MAX:    int64  = 9223372036854775807
+const F32_HALF:   float32 = 0.5
+const F64_PI:     float64 = 3.141592653589793
+
+const DERIVED_A:  int = MAX_ITER + MIN_ITER
+const DERIVED_B:  int = BUF_SIZE * 2
+const DERIVED_C:  int = MASK_8 & MASK_16
+const DERIVED_D:  int = SHIFT_1 + SHIFT_2 + SHIFT_3 + SHIFT_4
+const DERIVED_E:  int = THRESHOLD * 2 - QUARTER
+const DERIVED_F:  int = 1 << NIBBLE
+const DERIVED_G:  int = PAGE_SIZE / BYTE_BITS
+const DERIVED_H:  bool = TRUE_FLAG and not FALSE_FLAG
+const DERIVED_I:  int = (MASK_8 | SHIFT_4) ^ SHIFT_3
+
+func abs(n: int): int
+    if n < 0 then return -n end
+    return n
+end
+
+func sign(n: int): int
+    if n > 0 then return 1
+    elif n < 0 then return -1
+    else return 0
+    end
+end
+
+func min2(a: int, b: int): int
+    if a < b then return a end
+    return b
+end
+
+func max2(a: int, b: int): int
+    if a > b then return a end
+    return b
+end
+
+func clamp(v: int, lo: int, hi: int): int
+    if v < lo then return lo end
+    if v > hi then return hi end
+    return v
+end
+
+func in_range(v: int, lo: int, hi: int): bool
+    return v >= lo and v <= hi
+end
+
+func is_even(n: int): bool
+    return n % 2 == 0
+end
+
+func is_odd(n: int): bool
+    return n % 2 != 0
+end
+
+func is_power_of_two(n: int): bool
+    return n > 0 and (n & (n - 1)) == 0
+end
+
+func bit_count(n: int): int
+    var cnt: int = 0
+    var v:   int = n
+    for i in 32 do
+        if (v >> i) & 1 != 0 then
+            cnt += 1
+        end
+    end
+    return cnt
+end
+
+func swap_bits(n: int, i: int, j: int): int
+    var bi: int = (n >> i) & 1
+    var bj: int = (n >> j) & 1
+    if bi != bj then
+        n ^= (1 << i) | (1 << j)
+    end
+    return n
+end
+
+func rotate_left(n: int, bits: int): int
+    return (n << bits) | (n >> (32 - bits))
+end
+
+func rotate_right(n: int, bits: int): int
+    return (n >> bits) | (n << (32 - bits))
+end
+
+func sum3(a: int, b: int, c: int): int
+    return a + b + c
+end
+
+func product3(a: int, b: int, c: int): int
+    return a * b * c
+end
+
+func avg2(a: int, b: int): int
+    return (a + b) / 2
+end
+
+func gcd(a: int, b: int): int
+    var x: int = abs(a)
+    var y: int = abs(b)
+    for i in MAX_ITER do
+        if y == 0 then return x end
+        var tmp: int = y
+        y = x % y
+        x = tmp
+    end
+    return x
+end
+
+func lcm(a: int, b: int): int
+    var g: int = gcd(a, b)
+    if g == 0 then return 0 end
+    return abs(a * b) / g
+end
+
+func factorial(n: int): int
+    var result: int = 1
+    for i in n do
+        result *= i + 1
+    end
+    return result
+end
+
+func fib(n: int): int
+    if n <= 0 then return 0 end
+    if n == 1 then return 1 end
+    var a: int = 0
+    var b: int = 1
+    for i in n - 1 do
+        var tmp: int = a + b
+        a = b
+        b = tmp
+    end
+    return b
+end
+
+func is_prime(n: int): bool
+    if n < 2 then return false end
+    if n == 2 then return true end
+    if is_even(n) then return false end
+    for i in n do
+        var d: int = i + 3
+        if d * d > n then return true end
+        if n % d == 0 then return false end
+    end
+    return true
+end
+
+func count_digits(n: int): int
+    var cnt: int = 0
+    var v: int   = abs(n)
+    if v == 0 then return 1 end
+    for i in 20 do
+        if v == 0 then return cnt end
+        v   /= 10
+        cnt += 1
+    end
+    return cnt
+end
+
+func digit_sum(n: int): int
+    var s: int = 0
+    var v: int = abs(n)
+    for i in 20 do
+        if v == 0 then return s end
+        s += v % 10
+        v /= 10
+    end
+    return s
+end
+
+func reverse_bits(n: int): int
+    var result: int = 0
+    for i in 32 do
+        result = (result << 1) | (n & 1)
+        n >>= 1
+    end
+    return result
+end
+
+func next_pow2(n: int): int
+    var v: int = n - 1
+    v |= v >> 1
+    v |= v >> 2
+    v |= v >> 4
+    v |= v >> 8
+    v |= v >> 16
+    return v + 1
+end
+
+func pack_bytes(a: int, b: int, c: int, d: int): int
+    return (a & 0xFF)       |
+           ((b & 0xFF) << 8)  |
+           ((c & 0xFF) << 16) |
+           ((d & 0xFF) << 24)
+end
+
+func unpack_byte0(packed: int): int  return packed & 0xFF end
+func unpack_byte1(packed: int): int  return (packed >> 8)  & 0xFF end
+func unpack_byte2(packed: int): int  return (packed >> 16) & 0xFF end
+func unpack_byte3(packed: int): int  return (packed >> 24) & 0xFF end
+
+func lerp(a: int, b: int, t_num: int, t_den: int): int
+    return a + (b - a) * t_num / t_den
+end
+
+func dot2(ax: int, ay: int, bx: int, by: int): int
+    return ax * bx + ay * by
+end
+
+func cross2(ax: int, ay: int, bx: int, by: int): int
+    return ax * by - ay * bx
+end
+
+func manhattan(ax: int, ay: int, bx: int, by: int): int
+    return abs(ax - bx) + abs(ay - by)
+end
+
+func chebyshev(ax: int, ay: int, bx: int, by: int): int
+    return max2(abs(ax - bx), abs(ay - by))
+end
+
+func in_rect(px: int, py: int, rx: int, ry: int, rw: int, rh: int): bool
+    return px >= rx and px < rx + rw and py >= ry and py < ry + rh
+end
+
+func saturate_add(a: int, b: int, max_val: int): int
+    var s: int = a + b
+    if s > max_val then return max_val end
+    return s
+end
+
+func saturate_sub(a: int, b: int, min_val: int): int
+    var s: int = a - b
+    if s < min_val then return min_val end
+    return s
+end
+
+func map_range(v: int, in_lo: int, in_hi: int, out_lo: int, out_hi: int): int
+    if in_hi == in_lo then return out_lo end
+    return out_lo + (v - in_lo) * (out_hi - out_lo) / (in_hi - in_lo)
+end
+
+func hash_int(n: int): int
+    var h: int = n
+    h ^= h >> 16
+    h *= 0x45d9f3b
+    h ^= h >> 16
+    return h
+end
+
+func mix(a: int, b: int, c: int): int
+    var x: int = a
+    var y: int = b
+    var z: int = c
+    x -= y  x -= z  x ^= z >> 13
+    y -= z  y -= x  y ^= x << 8
+    z -= x  z -= y  z ^= y >> 13
+    return z
+end
+
+func bool_to_int(v: bool): int
+    if v then return 1 end
+    return 0
+end
+
+func int_to_bool(v: int): bool
+    return v != 0
+end
+
+func negate(v: int): int     return -v end
+func complement(v: int): int return v ^ G_WORD_MASK end
+
+func all_set(a: bool, b: bool, c: bool, d: bool): bool
+    return a and b and c and d
+end
+
+func any_set(a: bool, b: bool, c: bool, d: bool): bool
+    return a or b or c or d
+end
+
+func none_set(a: bool, b: bool, c: bool, d: bool): bool
+    return not a and not b and not c and not d
+end
+
+func exactly_one(a: bool, b: bool, c: bool, d: bool): bool
+    var cnt: int = bool_to_int(a) + bool_to_int(b) + bool_to_int(c) + bool_to_int(d)
+    return cnt == 1
+end
+
+var vi_bare   = 0
+var vi_neg    = -1
+var vi_big    = 2147483647
+var vf_bare   = 3.14
+var vb_true   = true
+var vb_false  = false
+var vc_bare   = 'A'
+var vs_bare   = "hello"
+
+var vi1:  int     = 0
+var vi2:  int     = -1
+var vi3:  int     = 100
+var vi4:  int8    = 127
+var vi5:  int8    = -128
+var vi6:  int16   = 32767
+var vi7:  int16   = -32768
+var vi8:  int32   = 2147483647
+var vi9:  int32   = -2147483648
+var vi10: int64   = 9223372036854775807
+var vf1:  float   = 0.0
+var vf2:  float   = -1.5
+var vf3:  float32 = 3.14
+var vf4:  float64 = 2.718281828
+var vb1:  bool    = true
+var vb2:  bool    = false
+var vc1:  char    = 'a'
+var vc2:  char    = 'Z'
+var vc3:  char    = '0'
+var vs1:  string  = ""
+var vs2:  string  = "test"
+var vs3:  string  = "hello world"
+
+var va1:  int = 1 + 2
+var va2:  int = 10 - 3
+var va3:  int = 4 * 5
+var va4:  int = 8 / 2
+var va5:  int = 7 % 3
+var va6:  int = -vi3
+var va7:  int = -(vi1 + vi3)
+var va8:  int = vi1 + vi2 * vi3
+var va9:  int = (vi1 + vi2) * vi3
+var va10: int = vi1 * vi2 + vi3 * vi4 - vi5 / 2
+var va11: int = vi1 + vi2 + vi3 + vi4 + vi5 + vi6
+var va12: int = (vi1 + vi2) * (vi3 - vi4) / (vi5 + 1)
+
+var vbw1: int = vi1 & vi2
+var vbw2: int = vi1 | vi2
+var vbw3: int = vi1 ^ vi2
+var vbw4: int = vi1 << 2
+var vbw5: int = vi1 >> 1
+var vbw6: int = vi1 << SHIFT_1
+var vbw7: int = ~vi1 & MASK_8
+var vbw8: int = (vi1 & 0xFF) | (vi2 << 8) | (vi3 << 16)
+var vbw9: int = vi1 ^ vi2 ^ vi3 ^ vi4
+var vbw10:int = rotate_left(vi1, 4)
+
+var vbl1:  bool = vi1 > 0
+var vbl2:  bool = vi1 == vi2
+var vbl3:  bool = vi1 != vi2
+var vbl4:  bool = vi1 >= vi2
+var vbl5:  bool = vi1 <= vi2
+var vbl6:  bool = vi1 > 0 and vi2 > 0
+var vbl7:  bool = vi1 > 0 or  vi2 > 0
+var vbl8:  bool = not vi1 and not vi2
+var vbl9:  bool = vi1 > 0 and vi2 > 0 and vi3 > 0
+var vbl10: bool = vi1 > 0 or  vi2 > 0 or  vi3 > 0
+var vbl11: bool = not (vi1 > 0) and vi2 > 0
+var vbl12: bool = vi1 > vi2 and vi2 > vi3 and vi3 > 0
+var vbl13: bool = (vi1 + vi2) > (vi3 - vi4)
+var vbl14: bool = vi1 > 0 and vi2 != 0 and vi3 >= 1 and vi4 <= 100
+
+var vfc1:  int  = abs(-5)
+var vfc2:  int  = sign(vi1)
+var vfc3:  int  = min2(vi1, vi2)
+var vfc4:  int  = max2(vi1, vi2)
+var vfc5:  int  = clamp(vi1, 0, 100)
+var vfc6:  bool = in_range(vi1, 0, 100)
+var vfc7:  bool = is_even(vi1)
+var vfc8:  bool = is_odd(vi2)
+var vfc9:  int  = sum3(vi1, vi2, vi3)
+var vfc10: int  = product3(vi1, vi2, vi3)
+var vfc11: int  = avg2(vi1, vi2)
+var vfc12: int  = gcd(vi1, vi2)
+var vfc13: int  = lcm(vi1, vi2)
+var vfc14: int  = fib(10)
+var vfc15: bool = is_prime(17)
+var vfc16: int  = bit_count(vi1)
+var vfc17: int  = hash_int(vi1)
+var vfc18: int  = pack_bytes(vi1, vi2, vi3, vi4)
+var vfc19: int  = mix(vi1, vi2, vi3)
+var vfc20: int  = map_range(vi1, 0, 100, 0, 255)
+
+var ctr1: Counter     = Counter(start: 10, step: 1)
+var ctr2: Counter     = Counter(start: 100, step: 5)
+var acc1: Accumulator = Accumulator(init: 0)
+var acc2: Accumulator = Accumulator(init: 255)
+var rng1: RangeChecker = RangeChecker(lo: 0, hi: 100)
+var rng2: RangeChecker = RangeChecker(lo: -50, hi: 50)
+var bf1:  BitField    = BitField(width: 8)
+var bf2:  BitField    = BitField(width: 16)
+
+var vmc1:  int  = ctr1.get()
+var vmc2:  bool = ctr1.is_done()
+var vmc3:  int  = ctr1.tick()
+var vmc4:  int  = ctr2.reset()
+var vmc5:  int  = acc1.get()
+var vmc6:  bool = acc1.is_neg()
+var vmc7:  bool = acc2.is_pos()
+var vmc8:  int  = rng1.span()
+var vmc9:  int  = rng1.mid()
+var vmc10: bool = rng1.in_range(vi1)
+var vmc11: int  = rng2.clamp(vi2)
+var vmc12: int  = bf1.get()
+var vmc13: bool = bf1.bit_set(3)
+var vmc14: int  = bf1.set_bit(0)
+var vmc15: int  = bf2.popcount()
+
+var sv1: Vec2  = Vec2 { x: 1,  y: 2 }
+var sv2: Vec2  = Vec2 { x: vi1, y: vi2 }
+var sv3: Vec3  = Vec3 { x: 0, y: 0, z: 0 }
+var sv4: Rect  = Rect { x: 0, y: 0, width: 100, height: 50 }
+var sv5: Color = Color { r: 255, g: 0, b: 0, a: 255 }
+var sv6: Stats = Stats { min: 0, max: 100, sum: 0, count: 0 }
+var sv7: Flags = Flags { active: true, visible: true, locked: false, dirty: false }
+var sv8: Node  = Node  { value: 42, left: 0, right: 0, depth: 1 }
+var sv9: BBox  = BBox  { min_x: 0, min_y: 0, max_x: 100, max_y: 100 }
+var sv10: Pair = Pair  { first: vi1, second: vi2 }
+
+var ev1: Status    = Status.Ok(code: 200)
+var ev2: Status    = Status.Err(msg: "fail")
+var ev3: Status    = Status.Pending
+var ev4: Status    = Status.Timeout(ms: 5000)
+var ev5: Direction = Direction.North
+var ev6: Direction = Direction.South
+var ev7: Shape     = Shape.Circle(radius: 10)
+var ev8: Shape     = Shape.Rect(w: 20, h: 30)
+var ev9: Op        = Op.Add(lhs: 1, rhs: 2)
+var ev10: Op       = Op.Neg(val: -5)
+var ev11: Color    = Color.Red
+var ev12: Color    = Color.Custom(r: 128, g: 64, b: 32)
+var ev13: Priority = Priority.High(weight: 10)
+var ev14: Priority = Priority.Critical(weight: 99, reason: "overflow")
+var ev15: Tree     = Tree.Leaf(value: 7)
+
+ 
+var cx1: int  = abs(vi1) + abs(vi2)
+var cx2: int  = max2(abs(vi1), abs(vi2))
+var cx3: int  = clamp(vi1 + vi2, 0, LIMIT)
+var cx4: bool = is_prime(fib(7))
+var cx5: int  = gcd(factorial(4), factorial(6))
+var cx6: int  = hash_int(mix(vi1, vi2, vi3))
+var cx7: int  = pack_bytes(unpack_byte0(vi1), unpack_byte1(vi1), vi2 & 0xFF, vi3 & 0xFF)
+var cx8: bool = in_range(clamp(vi1, 0, 100), 0, THRESHOLD)
+var cx9: int  = map_range(clamp(vi1, 0, 100), 0, 100, 0, 255)
+var cx10: int = lerp(0, 100, 1, 3)
+var cx11: bool = all_set(vbl1, vbl2, vbl6, vbl9)
+var cx12: bool = any_set(vbl1, vbl7, is_prime(vi1), is_even(vi2))
+var cx13: int  = saturate_add(vi1, vi2, MAX_ITER)
+var cx14: int  = saturate_sub(vi1, vi2, 0)
+var cx15: int  = bit_count(reverse_bits(vi1)) 
+
+let li1:  int     = 0
+let li2:  int     = -1
+let li3:  int     = 2147483647
+let li4:  int8    = 127
+let li5:  int16   = -32768
+let li6:  int32   = 99999
+let li7:  int64   = 9999999999
+let lf1:  float   = 3.14
+let lf2:  float32 = 0.5
+let lf3:  float64 = 2.718281828
+let lb1:  bool    = true
+let lb2:  bool    = false
+let lc1:  char    = 'x'
+let ls1:  string  = "immutable"
+let ls2:  string  = ""
+
+let la1: int  = vi1 + vi2
+let la2: int  = vi1 * vi3 - vi4
+let la3: int  = abs(vi2)
+let la4: int  = max2(vi1, vi3)
+let la5: int  = clamp(vi1, 0, 100)
+let la6: bool = vi1 > vi2 and vi3 != 0
+let la7: bool = is_prime(vi3)
+let la8: bool = is_even(vi1) or is_odd(vi2)
+let la9: int  = fib(8)
+let la10: int = gcd(vi1 + vi2, vi3)
+let la11: int = hash_int(vi1 ^ vi2)
+let la12: int = sum3(vi1, vi2, vi3) * avg2(vi4, vi5)
+let la13: bool = in_range(vi1, li1, li3)
+let la14: int  = bit_count(vi1 | vi2 | vi3)
+let la15: int  = rotate_left(vi1, SHIFT_1)
+
+let lmc1: int  = ctr1.get()
+let lmc2: bool = ctr1.is_done()
+let lmc3: int  = acc1.op_count()
+let lmc4: bool = rng1.in_range(vi1)
+let lmc5: int  = rng2.span()
+let lmc6: bool = bf1.bit_set(0)
+let lmc7: int  = bf2.popcount()
+
+ 
+ 
+ 
+
+const C_I:    int     = 42
+const C_I8:   int8    = 100
+const C_I16:  int16   = 1000
+const C_I32:  int32   = 100000
+const C_I64:  int64   = 10000000000
+const C_F:    float   = 1.0
+const C_F32:  float32 = 0.25
+const C_F64:  float64 = 1.4142135623
+const C_B1:   bool    = true
+const C_B2:   bool    = false
+const C_CH:   char    = 'C'
+const C_STR:  string  = "const"
+
+const C_ADD:  int = 10 + 20
+const C_SUB:  int = 100 - 37
+const C_MUL:  int = 6 * 7
+const C_DIV:  int = 144 / 12
+const C_MOD:  int = 17 % 5
+const C_AND:  int = 0xFF & 0x0F
+const C_OR:   int = 0xF0 | 0x0F
+const C_XOR:  int = 0xAA ^ 0x55
+const C_SHL:  int = 1 << 10
+const C_SHR:  int = 1024 >> 3
+const C_NEG:  int = -C_ADD
+const C_NOT:  bool = not C_B1
+const C_BOOL: bool = C_B1 and not C_B2
+const C_CMP:  bool = C_I > C_I8
+const C_MIX:  int  = (C_AND | C_SHL) ^ C_XOR
+const C_CHAIN:int  = C_ADD * C_SUB - C_MUL + C_DIV % C_MOD
+
+global GX_I:    int     = 1
+global GX_I8:   int8    = 2
+global GX_I16:  int16   = 3
+global GX_I32:  int32   = 4
+global GX_I64:  int64   = 5
+global GX_F:    float   = 1.1
+global GX_F32:  float32 = 2.2
+global GX_F64:  float64 = 3.3
+global GX_B1:   bool    = true
+global GX_B2:   bool    = false
+global GX_CH:   char    = 'G'
+global GX_STR:  string  = "global_x"
+
+global GX_A1:   int  = 10 + 20
+global GX_A2:   int  = 100 - 1
+global GX_A3:   int  = 3 * 3
+global GX_A4:   int  = 100 / 5
+global GX_A5:   int  = 99 % 7
+global GX_A6:   int  = 1 << 4
+global GX_A7:   int  = 64 >> 2
+global GX_A8:   int  = 0xAB & 0x0F
+global GX_A9:   int  = 0xA0 | 0x0B
+global GX_A10:  int  = 0xFF ^ 0xF0
+global GX_BOOL: bool = true and not false
+global GX_CMP:  bool = 10 > 5 and 3 != 0
+
+ 
+ 
+ 
+
+var ax: int = 0
+
+ax = 1
+ax = -1
+ax = vi1
+ax = vi1 + vi2
+ax = vi1 * vi3 - vi4
+ax = (vi1 + vi2) * (vi3 - vi4)
+ax = vi1 & vi2
+ax = vi1 | vi3
+ax = vi1 ^ vi2
+ax = vi1 << 2
+ax = vi3 >> 1
+ax = abs(vi2)
+ax = max2(vi1, vi3)
+ax = clamp(vi1, 0, 100)
+ax = gcd(vi1, vi2)
+ax = hash_int(vi1)
+ax = ctr1.get()
+ax = acc1.op_count()
+ax = rng1.span()
+ax = bf1.get()
+ax = mix(vi1, vi2, vi3)
+ax = pack_bytes(vi1, vi2, vi3, vi4)
+ax = map_range(vi1, 0, 100, 0, 255)
+
+ax += 1
+ax += vi1
+ax += vi1 + vi2
+ax += vi1 * vi2
+ax += abs(vi1)
+ax += ctr1.get()
+ax += max2(vi1, vi2) * min2(vi3, vi4)
+
+ax -= 1
+ax -= vi1
+ax -= vi1 - vi2
+ax -= abs(vi3)
+ax -= ctr2.get()
+
+ax *= 2
+ax *= vi1
+ax *= vi1 + 1
+ax *= max2(vi1, 1)
+
+ax /= 2
+ax /= vi1 + 1
+ax /= max2(vi1, 1)
+
+ax %= 7
+ax %= vi2 + 1
+ax %= max2(vi3, 1)
+
+ax &= 0xFF
+ax &= vi1
+ax &= vi1 | vi2
+ax &= MASK_8
+
+ax |= 1
+ax |= vi1
+ax |= vi1 & vi2
+ax |= G_BITS
+
+ax ^= 1
+ax ^= vi1
+ax ^= vi1 + vi2
+ax ^= hash_int(vi1)
+
+ax <<= 1
+ax <<= 2
+ax <<= SHIFT_1
+ax <<= vi1 & 31
+
+ax >>= 1
+ax >>= 2
+ax >>= SHIFT_1
+ax >>= vi1 & 31
+
+var m_a:    int    = vi1 + C_ADD
+var m_b:    int    = vi2 * GX_A3
+var m_c:    bool   = m_a > m_b
+var m_d:    int    = clamp(m_a, 0, MAX_ITER)
+let m_e:    int    = gcd(m_a, m_b)
+const M_F:  int    = C_ADD + C_MUL
+global M_G: int    = 0
+var m_h:    bool   = is_prime(m_d)
+var m_i:    int    = bool_to_int(m_h) * m_d
+var m_j:    int    = hash_int(mix(m_a, m_b, m_e))
+
+var loop_acc:  int = 0
+var loop_bits: int = 0
+var loop_min:  int = MAX_ITER
+var loop_max:  int = 0
+
+for i in MAX_ITER do
+    var cur: int = hash_int(i) & MASK_8
+    loop_acc  += cur
+    loop_bits |= cur
+    if cur < loop_min then loop_min = cur end
+    if cur > loop_max then loop_max = cur end
+end
+
+var range_res: int = 0
+for i in 32 do
+    if is_prime(i) then
+        range_res += i
+    elif is_even(i) then
+        range_res |= (1 << i) & MASK_16
+    else
+        range_res ^= i
+    end
+end
+
+var ctr_a: Counter     = Counter(start: 16, step: 1)
+var ctr_b: Counter     = Counter(start: 8,  step: 2)
+var acc_m: Accumulator = Accumulator(init: loop_acc)
+var rng_m: RangeChecker = RangeChecker(lo: loop_min, hi: loop_max)
+var bf_m:  BitField    = BitField(width: 16)
+
+var step_res: int = 0
+
+for i in 16 do
+    ctr_a.tick()
+    ctr_b.tick()
+    acc_m.add(i)
+    acc_m.mul(2)
+    acc_m.div(3)
+    bf_m.set_bit(i & 15)
+    step_res += rng_m.clamp(ctr_a.get())
+end
+
+var final_bits: int = bf_m.get()
+var final_cnt:  int = bf_m.popcount()
+var final_acc:  int = acc_m.get()
+
+var nested: int = 0
+if m_c and not ctr_a.is_done() then
+    nested = clamp(final_acc, 0, MAX_ITER)
+elif m_a > 0 and m_b > 0 then
+    nested = gcd(m_a, m_b)
+elif m_a == m_b or m_e == 0 then
+    nested = abs(m_a - m_b)
+else
+    nested = hash_int(m_j)
+end
+
+let final_verdict: bool =
+    in_range(nested,    0, MAX_ITER) and
+    in_range(loop_acc,  0, MAX_ITER) and
+    in_range(range_res, 0, MAX_ITER) and
+    final_cnt >= 0 and
+    not none_set(vbl1, vbl6, m_c, m_h)

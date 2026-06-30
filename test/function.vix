@@ -1,0 +1,1005 @@
+ 
+
+struct Point:
+    x = int
+    y = int
+end
+
+struct Node:
+    left  = int
+    right = int
+end
+
+struct Person:
+    age  = int
+    name = str
+end
+
+struct StatusResult:
+    ok   = bool
+    code = int
+end
+
+struct Rect:
+    x      = int
+    y      = int
+    width  = int
+    height = int
+end
+
+struct Color:
+    r = int
+    g = int
+    b = int
+end
+
+struct Range:
+    lo = int
+    hi = int
+end
+
+struct Pair:
+    first  = int
+    second = int
+end
+
+struct Triple:
+    a = int
+    b = int
+    c = int
+end
+
+struct Vec2:
+    x = float
+    y = float
+end
+
+struct Named:
+    name  = str
+    value = int
+end
+
+struct Tagged:
+    tag  = int
+    data = int
+end
+
+struct Header:
+    id   = int
+    size = int
+    flag = bool
+end
+
+ 
+
+enum Status:
+    Ok(code: int)
+    Err(msg: str)
+    Pending
+end
+
+enum Direction:
+    North
+    South
+    East
+    West
+end
+
+enum Shape:
+    Circle(radius: float)
+    Rect(width: float, height: float)
+    Point
+end
+
+enum Token:
+    Int(value: int)
+    Float(value: float)
+    Str(value: str)
+    Bool(value: bool)
+    Eof
+end
+
+enum Color:
+    Red
+    Green
+    Blue
+    Custom(r: int, g: int, b: int)
+end
+
+enum Result:
+    Ok(value: int)
+    Err(code: int, msg: str)
+end
+
+enum Option:
+    Some(value: int)
+    None
+end
+
+ 
+
+global x: int        = 5
+global y: int        = 3
+global z: int        = 8
+global a: int        = 1
+global b: int        = 2
+global c: int        = 3
+global d: int        = 4
+global e: int        = 5
+global flag: bool    = false
+global buf:  str     = "data"
+global max:  int     = 100
+global range: int    = 10
+global threshold: int = 50
+global pi: float     = 3.14
+global neg_pi: float = -3.14
+global zero: float   = 0.0
+global ch: char      = 'a'
+global name: str     = "hello"
+global empty: str    = ""
+
+global point:  Point        = Point()
+global node:   Node         = Node()
+global person: Person       = Person()
+global result: StatusResult = StatusResult()
+global rect:   Rect         = Rect()
+global color:  Color        = Color()
+global rng:    Range        = Range()
+
+
+const MAX_SIZE   = 100
+const MIN_SIZE   = 0
+const DEFAULT    = 42
+const NEG_ONE    = -1
+const TRUE_VAL   = true
+const FALSE_VAL  = false
+const PI         = 3.14
+const NEG_PI     = -3.14
+const ZERO_F     = 0.0
+const ONE_F      = 1.0
+const EMPTY_STR  = ""
+const HELLO      = "hello"
+const NEWLINE    = '\n'
+const NULL_CHAR  = '\0'
+const SPACE      = ' '
+const A_CHAR     = 'a'
+const Z_CHAR     = 'z'
+
+const LIMIT: int   = 1000
+const SCALE: float = 2.5
+const TAG: str     = "tag"
+const ENABLED: bool = true
+
+class Counter(start: int)
+    var count: int
+
+    func get(): int       return count end
+    func is_done(): bool  return count >= start end
+    func remaining(): int return start - count end
+    func at_zero(): bool  return count == 0 end
+    func at_start(): bool return count == start end
+
+    func increment()
+        count += 1
+    end
+
+    func decrement()
+        count -= 1
+    end
+
+    func reset()
+        count = 0
+    end
+
+    func add(n: int)
+        count += n
+    end
+
+    func sub(n: int)
+        count -= n
+    end
+
+    func set(n: int)
+        count = n
+    end
+
+    func compare(n: int): int
+        return count - n
+    end
+
+    func distance(): int
+        return start - count
+    end
+end
+
+class Obj()
+    var value: int
+    var active: bool
+    var done:   bool
+    var valid:  bool
+
+    func is_ready(): bool  return active end
+    func get_value(): int  return value end
+    func is_valid(): bool  return valid end
+    func is_active(): bool return active end
+    func is_done(): bool   return done end
+    func check(): bool     return valid end
+    func get_raw(): int    return value end
+    func negate(): int     return -1 * value end
+
+    func compare(b: int): int
+        return value - b
+    end
+
+    func clamp_val(lo: int, hi: int): int
+        return value
+    end
+
+    func update(n: int)
+        value += n
+    end
+
+    func reset()
+        value = 0
+    end
+end
+
+class List()
+    var size: int
+    var cap:  int
+
+    func len(): int       return size end
+    func capacity(): int  return cap end
+    func is_empty(): bool return size == 0 end
+    func is_full(): bool  return size >= cap end
+    func remaining(): int return cap - size end
+
+    func push()
+        size += 1
+    end
+
+    func pop()
+        size -= 1
+    end
+
+    func clear()
+        size = 0
+    end
+
+    func reserve(n: int)
+        cap += n
+    end
+end
+
+class Stack()
+    var top:  int
+    var size: int
+
+    func peek(): int      return top end
+    func len(): int       return size end
+    func is_empty(): bool return size == 0 end
+
+    func push(n: int)
+        top = n
+        size += 1
+    end
+
+    func pop(): int
+        size -= 1
+        return top
+    end
+
+    func clear()
+        size = 0
+        top  = 0
+    end
+end
+
+class Pair[A, B](a: A, b: B)
+    var first:  A
+    var second: B
+
+    func get_first(): A     return first end
+    func get_second(): B    return second end
+    func has_first(): bool  return true end
+    func has_second(): bool return true end
+end
+
+class Box[T](val: T)
+    var inner: T
+
+    func get(): T         return inner end
+    func is_set(): bool   return true end
+
+    func set(v: T)
+        inner = v
+    end
+end
+
+class Triple[A, B, C](a: A, b: B, c: C)
+    var one:   A
+    var two:   B
+    var three: C
+
+    func get_one(): A   return one end
+    func get_two(): B   return two end
+    func get_three(): C return three end
+end
+
+var obj:     Obj     = Obj()
+var list:    List    = List()
+var stack:   Stack   = Stack()
+var counter: Counter = Counter(start: 10)
+
+var obj_a: Obj = Obj()
+var obj_b: Obj = Obj()
+var obj_c: Obj = Obj()
+var obj_d: Obj = Obj()
+
+
+func nothing() end
+func noop() end
+func empty_fn() end
+func blank() end
+func void_fn() end
+
+func nothing_body()
+end
+
+func early_return()
+    return
+end
+
+func get_b(): int   return 0 end
+func compute(a: int, b: int): int   return a + b end
+
+func get_zero(): int    return 0 end
+func get_one(): int     return 1 end
+func get_neg(): int     return -1 end
+func get_42(): int      return 42 end
+func get_100(): int     return 100 end
+func get_big(): int     return 999999 end
+func get_small(): int   return -999999 end
+func get_max(): int     return MAX_SIZE end
+func get_min(): int     return MIN_SIZE end
+func get_default(): int return DEFAULT end
+
+
+func get_true(): bool   return true end
+func get_false(): bool  return false end
+func get_tv(): bool     return TRUE_VAL end
+func get_fv(): bool     return FALSE_VAL end
+func get_enabled(): bool return ENABLED end
+
+
+func get_a(): char      return 'a' end
+func get_z(): char      return 'z' end
+func get_0(): char      return '0' end
+func get_space(): char  return ' ' end
+func get_nl(): char     return '\n' end
+func get_null(): char   return '\0' end
+func get_ch(): char     return ch end
+func get_ac(): char     return A_CHAR end
+func get_zc(): char     return Z_CHAR end
+
+
+func get_empty(): str   return "" end
+func get_hello(): str   return "hello" end
+func get_world(): str   return "world" end
+func get_name(): str    return name end
+func get_buf(): str     return buf end
+func get_tag(): str     return TAG end
+func get_hello_c(): str return HELLO end
+
+
+
+func get_pi(): float    return 3.14 end
+func get_neg_pi(): float return -3.14 end
+func get_zero_f(): float return 0.0 end
+func get_one_f(): float  return 1.0 end
+func get_pi_g(): float   return pi end
+func get_pi_c(): float   return PI end
+func get_scale(): float  return SCALE end
+
+ 
+
+func id_int(n: int): int      return n end
+func id_bool(b: bool): bool   return b end
+func id_char(c: char): char   return c end
+func id_str(s: str): str      return s end
+func id_float(f: float): float return f end
+
+func pass_int(n: int)    end
+func pass_bool(b: bool)  end
+func pass_char(c: char)  end
+func pass_str(s: str)    end
+func pass_float(f: float) end
+
+ 
+
+func id_ptr(p: *int): *int       return p end
+func id_rawptr(p: **int): **int  return p end
+func id_ptr_bool(p: *bool): *bool return p end
+
+func void_ptr(p: *int)    end
+func void_rawptr(p: **int) end
+
+func ret_from_ptr(p: *int): int   return 0 end
+func ret_from_rptr(p: **int): int return 0 end
+
+func two_ptrs(a: *int, b: *int): *int   return a end
+func ptr_and_val(p: *int, n: int): int  return n end
+func val_and_ptr(n: int, p: *int): int  return n end
+
+ 
+
+func take_point(p: Point): int           return p.x end
+func take_point_y(p: Point): int         return p.y end
+func take_node_l(n: Node): int           return n.left end
+func take_node_r(n: Node): int           return n.right end
+func take_person_age(p: Person): int     return p.age end
+func take_person_name(p: Person): str    return p.name end
+func take_result_ok(r: StatusResult): bool  return r.ok end
+func take_result_code(r: StatusResult): int return r.code end
+func take_rect_x(r: Rect): int           return r.x end
+func take_rect_y(r: Rect): int           return r.y end
+func take_rect_w(r: Rect): int           return r.width end
+func take_rect_h(r: Rect): int           return r.height end
+func take_color_r(c: Color): int         return c.r end
+func take_color_g(c: Color): int         return c.g end
+func take_color_b(c: Color): int         return c.b end
+func take_range_lo(r: Range): int        return r.lo end
+func take_range_hi(r: Range): int        return r.hi end
+func take_pair_f(p: Pair): int           return p.first end
+func take_pair_s(p: Pair): int           return p.second end
+func take_triple_a(t: Triple): int       return t.a end
+func take_triple_b(t: Triple): int       return t.b end
+func take_triple_c(t: Triple): int       return t.c end
+func take_vec_x(v: Vec2): float          return v.x end
+func take_vec_y(v: Vec2): float          return v.y end
+func take_named_n(n: Named): str         return n.name end
+func take_named_v(n: Named): int         return n.value end
+func take_tagged_t(t: Tagged): int       return t.tag end
+func take_tagged_d(t: Tagged): int       return t.data end
+func take_header_id(h: Header): int      return h.id end
+func take_header_sz(h: Header): int      return h.size end
+func take_header_fl(h: Header): bool     return h.flag end
+
+ 
+
+func take_counter(c: Counter): int       return c.get() end
+func take_counter_done(c: Counter): bool return c.is_done() end
+func take_counter_rem(c: Counter): int   return c.remaining() end
+func take_obj(o: Obj): bool              return o.is_ready() end
+func take_obj_val(o: Obj): int           return o.get_value() end
+func take_obj_valid(o: Obj): bool        return o.is_valid() end
+func take_obj_done(o: Obj): bool         return o.is_done() end
+func take_obj_check(o: Obj): bool        return o.check() end
+func take_list(l: List): int             return l.len() end
+func take_list_empty(l: List): bool      return l.is_empty() end
+func take_list_cap(l: List): int         return l.capacity() end
+func take_stack(s: Stack): int           return s.len() end
+func take_stack_empty(s: Stack): bool    return s.is_empty() end
+func take_stack_peek(s: Stack): int      return s.peek() end
+
+ 
+
+func two_points(a: Point, b: Point): int           return a.x + b.x end
+func point_and_node(p: Point, n: Node): int        return p.x + n.left end
+func point_and_person(p: Point, q: Person): int    return p.x + q.age end
+func node_and_result(n: Node, r: StatusResult): bool return r.ok end
+func rect_and_color(r: Rect, c: Color): int        return r.x + c.r end
+func two_ranges(a: Range, b: Range): int           return a.lo + b.hi end
+func header_and_named(h: Header, n: Named): int    return h.id + n.value end
+
+func struct_and_int(p: Point, n: int): int         return p.x + n end
+func struct_and_bool(p: Point, b: bool): bool      return b end
+func struct_and_str(p: Person, s: str): str        return s end
+func int_and_struct(n: int, p: Point): int         return n + p.x end
+func obj_and_int(o: Obj, n: int): int              return n end
+func counter_and_bool(c: Counter, b: bool): bool   return b end
+func list_and_int(l: List, n: int): int            return n end
+
+ 
+
+func make_point(x: int, y: int): Point
+    return Point { x: x, y: y }
+end
+
+func make_node(l: int, r: int): Node
+    return Node { left: l, right: r }
+end
+
+func make_result(ok: bool, code: int): StatusResult
+    return StatusResult { ok: ok, code: code }
+end
+
+func make_rect(x: int, y: int, w: int, h: int): Rect
+    return Rect { x: x, y: y, width: w, height: h }
+end
+
+func make_color(r: int, g: int, b: int): Color
+    return Color { r: r, g: g, b: b }
+end
+
+func make_range(lo: int, hi: int): Range
+    return Range { lo: lo, hi: hi }
+end
+
+func make_pair(f: int, s: int): Pair
+    return Pair { first: f, second: s }
+end
+
+func make_triple(a: int, b: int, c: int): Triple
+    return Triple { a: a, b: b, c: c }
+end
+
+func make_named(n: str, v: int): Named
+    return Named { name: n, value: v }
+end
+
+func make_header(id: int, sz: int, f: bool): Header
+    return Header { id: id, size: sz, flag: f }
+end
+
+ 
+
+func use_x(): int         return x end
+func use_y(): int         return y end
+func use_z(): int         return z end
+func use_a(): int         return a end
+func use_b(): int         return b end
+func use_flag(): bool     return flag end
+func use_buf(): str       return buf end
+func use_max(): int       return max end
+func use_threshold(): int return threshold end
+func use_pi_g(): float    return pi end
+func use_ch(): char       return ch end
+func use_name(): str      return name end
+
+func add_globals(): int   return x + y + z end
+func mul_globals(): int   return a * b * c end
+func sum_globals(): int   return a + b + c + d + e end
+
+func global_point_x(): int  return point.x end
+func global_point_y(): int  return point.y end
+func global_node_l(): int   return node.left end
+func global_person_age(): int  return person.age end
+func global_result_ok(): bool  return result.ok end
+
+ 
+
+func use_max_size(): int   return MAX_SIZE end
+func use_min_size(): int   return MIN_SIZE end
+func use_default(): int    return DEFAULT end
+func use_neg_one(): int    return NEG_ONE end
+func use_true(): bool      return TRUE_VAL end
+func use_false(): bool     return FALSE_VAL end
+func use_pi_c(): float     return PI end
+func use_scale(): float    return SCALE end
+func use_tag(): str        return TAG end
+func use_hello(): str      return HELLO end
+func use_nl(): char        return NEWLINE end
+func use_null(): char      return NULL_CHAR end
+func use_space(): char     return SPACE end
+func use_limit(): int      return LIMIT end
+
+func add_consts(): int     return MAX_SIZE + MIN_SIZE + DEFAULT end
+func scale_const(): float  return PI + SCALE end
+
+ 
+
+func add(a: int, b: int): int       return a + b end
+func sub(a: int, b: int): int       return a - b end
+func mul(a: int, b: int): int       return a * b end
+func div2(a: int, b: int): int      return a / b end
+func mod2(a: int, b: int): int      return a % b end
+func band(a: int, b: int): int      return a & b end
+func bor(a: int, b: int): int       return a | b end
+func bxor(a: int, b: int): int      return a ^ b end
+func shl(a: int, b: int): int       return a << b end
+func shr(a: int, b: int): int       return a >> b end
+func eq(a: int, b: int): bool       return a == b end
+func ne(a: int, b: int): bool       return a != b end
+func lt(a: int, b: int): bool       return a < b end
+func gt(a: int, b: int): bool       return a > b end
+func le(a: int, b: int): bool       return a <= b end
+func ge(a: int, b: int): bool       return a >= b end
+func land(a: bool, b: bool): bool   return a and b end
+func lor(a: bool, b: bool): bool    return a or b end
+func lnot(a: bool): bool            return not a end
+
+func mixed_ib(n: int, b: bool): int    return n end
+func mixed_bi(b: bool, n: int): bool   return b end
+func mixed_is(n: int, s: str): int     return n end
+func mixed_si(s: str, n: int): str     return s end
+func mixed_ic(n: int, c: char): char   return c end
+func mixed_ci(c: char, n: int): int    return n end
+func mixed_if(n: int, f: float): float return f end
+func mixed_fi(f: float, n: int): int   return n end
+
+ 
+
+func add3(a: int, b: int, c: int): int         return a + b + c end
+func mul3(a: int, b: int, c: int): int         return a * b * c end
+func sub3(a: int, b: int, c: int): int         return a - b - c end
+func all3(a: bool, b: bool, c: bool): bool     return a and b and c end
+func any3(a: bool, b: bool, c: bool): bool     return a or b or c end
+func mixed_3a(a: int, b: bool, c: char): int   return a end
+func mixed_3b(a: str, b: int, c: bool): str    return a end
+func mixed_3c(a: float, b: int, c: bool): float return a end
+func three_ptr(a: *int, b: *int, c: *int): *int return a end
+
+ 
+
+func add4(a: int, b: int, c: int, d: int): int return a + b + c + d end
+func mul4(a: int, b: int, c: int, d: int): int return a * b * c * d end
+func mixed_4(a: int, b: bool, c: str, d: char): int return a end
+
+func add5(a: int, b: int, c: int, d: int, e: int): int return a + b + c + d + e end
+func mixed_5(a: int, b: bool, c: char, d: str, e: float): int return a end
+
+ 
+
+func add6(a: int, b: int, c: int, d: int, e: int, f: int): int
+    return a + b + c + d + e + f
+end
+
+func add7(a: int, b: int, c: int, d: int, e: int, f: int, g: int): int
+    return a + b + c + d + e + f + g
+end
+
+func mixed_6(a: int, b: int, c: bool, d: bool, e: str, f: char): int
+    return a
+end
+
+func mixed_8(a: int, b: int, c: int, d: int, e: bool, f: bool, g: str, h: char): str
+    return g
+end
+
+ 
+
+func identity[T](val: T): T            return val end
+func pass_through[T](a: T): T          return a end
+func const_int[T](a: T): int           return 0 end
+func const_bool[T](a: T): bool         return true end
+func first[T](a: T, b: T): T          return a end
+func second[T](a: T, b: T): T         return b end
+func max[T](a: T, b: T): T            return a end
+func min[T](a: T, b: T): T            return b end
+func clamp[T](val: T, lo: T, hi: T): T return val end
+func is_between[T](val: T, lo: T, hi: T): bool return true end
+func triple_same[T](a: T, b: T, c: T): T return a end
+func ignore_two[T](a: T, b: T, c: T): T  return c end
+
+ 
+
+func pair_first[A, B](a: A, b: B): A   return a end
+func pair_second[A, B](a: A, b: B): B  return b end
+func pair_const[A, B](a: A, b: B): int return 0 end
+func map_key[K, V](k: K, v: V): K      return k end
+func map_val[K, V](k: K, v: V): V      return v end
+func either[L, R](l: L, r: R): L       return l end
+
+ 
+
+func triple_first[A, B, C](a: A, b: B, c: C): A return a end
+func triple_mid[A, B, C](a: A, b: B, c: C): B   return b end
+func triple_last[A, B, C](a: A, b: B, c: C): C  return c end
+func fold3[A, B, C](a: A, b: B, c: C): A        return a end
+
+ 
+
+func inline_add(a: int, b: int): int    return a + b end
+func inline_sub(a: int, b: int): int    return a - b end
+func inline_mul(a: int, b: int): int    return a * b end
+func inline_div(a: int, b: int): int    return a / b end
+func inline_mod(a: int, b: int): int    return a % b end
+func inline_neg(a: int): int            return -1 * a end
+func inline_not(a: bool): bool          return not a end
+func inline_and(a: bool, b: bool): bool return a and b end
+func inline_or(a: bool, b: bool): bool  return a or b end
+func inline_eq(a: int, b: int): bool    return a == b end
+func inline_ne(a: int, b: int): bool    return a != b end
+func inline_lt(a: int, b: int): bool    return a < b end
+func inline_gt(a: int, b: int): bool    return a > b end
+func inline_le(a: int, b: int): bool    return a <= b end
+func inline_ge(a: int, b: int): bool    return a >= b end
+func inline_band(a: int, b: int): int   return a & b end
+func inline_bor(a: int, b: int): int    return a | b end
+func inline_bxor(a: int, b: int): int   return a ^ b end
+func inline_shl(a: int, b: int): int    return a << b end
+func inline_shr(a: int, b: int): int    return a >> b end
+
+ 
+
+public func public_nothing() end
+public func public_int(): int       return 0 end
+public func public_bool(): bool     return true end
+public func public_str(): str       return "" end
+public func public_char(): char     return 'a' end
+public func public_float(): float   return 0.0 end
+public func public_one(n: int): int return n end
+public func public_two(a: int, b: int): int   return a + b end
+public func public_three(a: int, b: int, c: int): int return a + b + c end
+public func public_ptr(p: *int): *int         return p end
+public func public_rawptr(p: **int): **int    return p end
+public func public_struct_p(p: Point): int    return p.x end
+public func public_struct_n(n: Node): int     return n.left end
+public func public_struct_r(r: StatusResult): bool return r.ok end
+public func public_generic[T](v: T): T        return v end
+public func public_generic2[A, B](a: A, b: B): A return a end
+public func public_generic3[A, B, C](a: A, b: B, c: C): C return c end
+
+public func public_body(): int
+    return DEFAULT
+end
+
+public func public_body_params(a: int, b: int, c: int): int
+    return a + b + c
+end
+
+public func public_body_global(): int
+    return x + y + z
+end
+
+public func public_body_const(): int
+    return MAX_SIZE + DEFAULT
+end
+
+ 
+
+unsafe func unsafe_nothing() end
+unsafe func unsafe_int(): int    return 0 end
+unsafe func unsafe_bool(): bool  return false end
+unsafe func unsafe_one(n: int): int return n end
+unsafe func unsafe_two(a: int, b: int): int return a + b end
+unsafe func unsafe_ptr(p: *int): int  return 0 end
+unsafe func unsafe_rawptr(p: **int): int return 0 end
+unsafe func unsafe_ptr_ret(p: *int): *int return p end
+unsafe func unsafe_two_ptr(a: *int, b: *int): *int return a end
+unsafe func unsafe_ptr_val(p: *int, n: int): int return n end
+
+unsafe func unsafe_body(): int
+    return 0
+end
+
+unsafe func unsafe_body_ptr(p: *int): int
+    return 0
+end
+
+unsafe func unsafe_body_two(a: *int, b: **int): *int
+    return a
+end
+
+ 
+
+public unsafe func pu_nothing() end
+public unsafe func pu_int(): int    return 0 end
+public unsafe func pu_bool(): bool  return false end
+public unsafe func pu_one(n: int): int return n end
+public unsafe func pu_ptr(p: *int): *int return p end
+public unsafe func pu_rawptr(p: **int): **int return p end
+public unsafe func pu_generic[T](v: T): T         return v end
+public unsafe func pu_generic2[A, B](a: A, b: B): A return a end
+
+public unsafe func pu_body(): int
+    return 0
+end
+
+public unsafe func pu_body_ptr(p: *int): int
+    return 0
+end
+
+public unsafe func pu_body_two(a: *int, b: **int): *int
+    return a
+end
+
+ 
+
+func body_let(): int
+    let r: int = compute(a: 10, b: 20)
+    return r
+end
+
+func body_let_chain(): int
+    let a: int = get_a()
+    let b: int = get_b()
+    let r: int = compute(a: a, b: b)
+    return r
+end
+
+func body_vars(): int
+    var lx: int = 10
+    var ly: int = 20
+    var lz: int = 30
+    return lz
+end
+
+func body_assigns(): int
+    var lx: int = 0
+    lx += 1
+    lx += 2
+    lx -= 1
+    lx *= 2
+    lx /= 2
+    lx %= 3
+    lx &= 255
+    lx |= 1
+    lx ^= lx
+    lx <<= 1
+    lx >>= 1
+    return lx
+end
+
+func body_struct_field(p: Point): int
+    var v: int = p.x
+    return v
+end
+
+func body_two_fields(p: Point): int
+    var vx: int = p.x
+    var vy: int = p.y
+    return vx + vy
+end
+
+func body_node_fields(n: Node): int
+    var l: int = n.left
+    var r: int = n.right
+    return l + r
+end
+
+func body_person_fields(p: Person): str
+    var ag: int = p.age
+    var nm: str = p.name
+    return nm
+end
+
+func body_method_call(o: Obj): int
+    var v: int = o.get_value()
+    return v
+end
+
+func body_two_methods(o: Obj): int
+    var va: int = o.get_value()
+    var vb: int = o.compare(b: 0)
+    return va + vb
+end
+
+func body_counter(c: Counter): int
+    var g: int = c.get()
+    var r: int = c.remaining()
+    return g + r
+end
+
+func body_list(l: List): int
+    var sz: int = l.len()
+    var cp: int = l.capacity()
+    return sz + cp
+end
+
+func body_globals(): int
+    var lx: int = x
+    var ly: int = y
+    return lx + ly
+end
+
+func body_consts(): int
+    var s: int  = MAX_SIZE
+    var d2: int = DEFAULT
+    return s + d2
+end
+
+func body_global_struct(): int
+    var px: int = point.x
+    var py: int = point.y
+    return px + py
+end
+
+func body_global_node(): int
+    var l: int = node.left
+    var r: int = node.right
+    return l + r
+end
+
+ 
+
+func fact(n: int): int
+    return n * fact(n: n - 1)
+end
+
+func fib(n: int): int
+    return fib(n: n - 1) + fib(n: n - 2)
+end
+
+func sum_to(n: int): int
+    return n + sum_to(n: n - 1)
+end
+
+func power(base: int, exp: int): int
+    return base * power(base: base, exp: exp - 1)
+end
+
+func gcd(a: int, b: int): int
+    return gcd(a: b, b: a % b)
+end
+
+func ackermann(m: int, n: int): int
+    return ackermann(m: m - 1, n: ackermann(m: m, n: n - 1))
+end
+
+ 
+
+func call_no_args(): int   return get_zero() end
+func call_forward(n: int): int return id_int(n: n) end
+func call_chain(a: int, b: int): int return add(a: a, b: b) end
+
+func call_nested(a: int, b: int, c: int): int
+    return add(a: add(a: a, b: b), b: c)
+end
+
+func call_deep(a: int, b: int, c: int, d: int): int
+    return add(a: add(a: a, b: b), b: add(a: c, b: d))
+end
+
+func call_method(o: Obj): int       return o.get_value() end
+func call_method_b(o: Obj): bool    return o.is_ready() end
+func call_counter(c: Counter): int  return c.get() end
+func call_list(l: List): int        return l.len() end
+func call_stack(s: Stack): int      return s.peek() end
+
+ 
+
+public unsafe func mega[A, B, C](
+    a: A, b: B, c: C,
+    x: int, y: int, z: int,
+    p: *int, q: **int,
+    flag: bool, s: str, ch: char, f: float
+): A
+    return a
+end
+
+public func ultra[T](
+    val: T,
+    a: int, b: int, c: int, d: int, e: int,
+    flag: bool, s: str
+): T
+    return val
+end
+
+unsafe func raw_mega(
+    a: *int, b: **int,
+    x: int, y: int, z: int,
+    p: int, q: int, r: int
+): *int
+    return a
+end
+
+public func all_types(
+    a: int, b: bool, c: char, d: str, e: float,
+    f: *int, g: **int,
+    h: Point, i: Node, j: Person, k: StatusResult,
+    l: Rect, m: Color, n: Range
+): int
+    return a
+end
+
+public unsafe func all_types_generic[A, B, C, D](
+    a: A, b: B, c: C, d: D,
+    x: int, y: int, z: int,
+    p: *int, q: **int,
+    flag: bool, s: str, ch: char
+): A
+    return a
+end
+
+public func all_globals_and_consts(): int
+    var lx: int  = x + y + z
+    var mc: int  = MAX_SIZE + DEFAULT + LIMIT
+    var pp: int  = point.x + point.y
+    var nn: int  = node.left + node.right
+    var ag: int  = person.age
+    var gv: float = pi + PI
+
+    return lx + mc + pp + nn + ag
+end
