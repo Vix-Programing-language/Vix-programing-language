@@ -13,17 +13,31 @@ bool type_is_const_ptr(Type t) {
     return false;
 }
 
-
 void codegen_function(Register *reg, uint32_t id, IR_Def def) {
     IR_FuncDef fn = def.data.function.def;
     RegisterEntry *fn_entry = register_from_scope(reg, id);
     Register *child_reg = (fn_entry && fn_entry->data.function.child_reg) ? fn_entry->data.function.child_reg : reg;
 
+    StringView fn_name = sv_from_range(fn.name);
+
     ARR(uint32_t) param_ids = {0};
     for (size_t i = 0; i < fn.params_count; i++) {
-        StringView name = sv_from_range(fn.params[i].name);
-        RegisterEntry *e = register_get(child_reg, name);
-        ARR_PUSH(param_ids, e ? e->eid.id : 0);
+        StringView param_name = sv_from_range(fn.params[i].name);
+        uint32_t final_id = 0;
+
+        if (fn.params[i].eid.id != 0) {
+            final_id = fn.params[i].eid.id;
+        } else {
+
+            RegisterEntry *e = register_get(child_reg, param_name);
+            if (!e) e = register_get(reg, param_name);
+
+            if (e) {
+                final_id = e->eid.id;
+            }
+        }
+
+        ARR_PUSH(param_ids, final_id);
     }
 
     symbol_table_clear();
@@ -127,26 +141,71 @@ void codegen_enum(uint32_t id, IR_Def def) {
 }
 
 LLVMValueRef codegen_expr(Register *reg, IR_Expr *expr) {
-    if (!expr) return NULL;
+    if (!expr) {
+        fprintf(stderr, "[DEBUG CODEGEN_EXPR] Passed NULL expr!\n");
+        return NULL;
+    }
+
+    LLVMValueRef result = NULL;
 
     switch (expr->tag) {
-        case IR_Expr_Literal:    return codegen_expr_literal(reg, expr);
-        case IR_Expr_BinOp:      return codegen_expr_binop(reg, expr);
-        case IR_Expr_Call:       return codegen_expr_call(reg, expr);
-        case IR_Expr_VarRef:     return codegen_expr_var(reg, expr);
-        case IR_Expr_MethodCall: return codegen_expr_method(reg, expr);
-        case IR_Expr_Field:      return codegen_expr_field(reg, expr);
-        case IR_Expr_Cast:       return codegen_expr_cast(reg, expr);
-        case IR_Expr_MakeTuple:  return codegen_expr_tuple(reg, expr);
-        case IR_Expr_TupleIndex: return codegen_expr_tupleindex(reg, expr);
-        case IR_Expr_Idx:        return codegen_expr_index(reg, expr);
-        case IR_Expr_UnaryOp:    return codegen_expr_unop(reg, expr);
-        case IR_Expr_AddrOf:     return codegen_expr_addr(reg, expr->data.addr_of.expr);
-        case IR_Expr_MakeStruct: return codegen_expr_make_struct(reg, expr);
-        case IR_Expr_MakeEnum:   return codegen_expr_make_enum(reg, expr);
+        case IR_Expr_Literal:    
+            result = codegen_expr_literal(reg, expr); 
+            break;
+        case IR_Expr_BinOp:      
+            result = codegen_expr_binop(reg, expr); 
+            break;
+        case IR_Expr_Call:       
+            result = codegen_expr_call(reg, expr); 
+            break;
+        case IR_Expr_VarRef:     
+            result = codegen_expr_var(reg, expr); 
+            break;
+        case IR_Expr_MethodCall: 
+            result = codegen_expr_method(reg, expr); 
+            break;
+        case IR_Expr_Field:      
+            result = codegen_expr_field(reg, expr); 
+            break;
+        case IR_Expr_Cast:       
+            result = codegen_expr_cast(reg, expr); 
+            break;
+        case IR_Expr_MakeTuple:  
+            result = codegen_expr_tuple(reg, expr); 
+            break;
+        case IR_Expr_TupleIndex: 
+            result = codegen_expr_tupleindex(reg, expr); 
+            break;
+        case IR_Expr_Idx:        
+            result = codegen_expr_index(reg, expr); 
+            break;
+        case IR_Expr_UnaryOp:    
+            result = codegen_expr_unop(reg, expr); 
+            break;
+        case IR_Expr_AddrOf:     
+            result = codegen_expr_addr(reg, expr->data.addr_of.expr); 
+            break;
+        case IR_Expr_MakeStruct: 
+            result = codegen_expr_make_struct(reg, expr); 
+            break;
+        case IR_Expr_MakeEnum:   
+            result = codegen_expr_make_enum(reg, expr); 
+            break;
+
+        case IR_Expr_Array:
+            result = codegen_expr_array(reg, expr);
+            break;
+
         default:
+            fprintf(stderr, "[DEBUG CODEGEN_EXPR ERROR] Unknown or unhandled expr->tag: %d\n", expr->tag);
             return NULL;
     }
+
+    if (!result) {
+        fprintf(stderr, "[DEBUG CODEGEN_EXPR ERROR] Handler for tag %d returned NULL!\n", expr->tag);
+    }
+
+    return result;
 }
 
 static bool is_const_write_target(Register* reg, IR_Expr* target) {
@@ -182,15 +241,6 @@ static bool is_const_write_target(Register* reg, IR_Expr* target) {
 IR_Module codegen_def(Register *reg, IR_Module mod) {
     for (size_t i = 0; i < mod.defs.len; i++) {
         IR_Def def = mod.defs.data[i];
-
-        for (size_t i = 0; i < mod.defs.len; i++) {
-            IR_Def def = mod.defs.data[i];
-            if (def.tag != IR_Def_Function) continue;
-            IR_FuncDef fn = def.data.function.def;
-            LLVMTypeRef func_type = LLVMFunctionType( set_custom_type(fn.return_type), set_param(fn.params, fn.params_count), fn.params_count, 0);
-            if (!LLVMGetNamedFunction(llvm_mod, null_terminated(fn.name))) LLVMAddFunction(llvm_mod, null_terminated(fn.name), func_type);
-        }
-
         switch (def.tag) {
             case IR_Def_Function: {
                 StringView name = sv_from_range(def.data.function.def.name);
@@ -331,8 +381,8 @@ void codegen_stmts(Register *reg, IR_Stmt *stmts, size_t count) {
                 codegen_generate_match(reg, match_expr_val, s->data.match.arms, s->data.match.arms_count, s->data.match.default_body, s->data.match.default_body_count);
                 break;
             }
-            case IR_Stmt_While: { codegen_generate_while( reg, s->data.while_.cond, s->data.while_.body, s->data.while_.body_count); break; }
-            case IR_Stmt_For: { codegen_generate_for(reg, s->data.for_.iter, s->data.for_.body, s->data.for_.body_count); break; }
+            case IR_Stmt_While: { codegen_generate_while(s->data.while_.child_reg, s->data.while_.cond, s->data.while_.body, s->data.while_.body_count); break; }
+            case IR_Stmt_For: { codegen_generate_for(s->data.for_.child_reg, s->data.for_.iter, s->data.for_.body, s->data.for_.body_count); break; }
             
             default: break;
         }

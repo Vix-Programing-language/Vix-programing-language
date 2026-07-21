@@ -5,7 +5,7 @@
 
 #define UINT_CHUNK_LIMIT (64 * 1024)
 
-size_t PACK_CHUNK_SIZE = 64 * 1024 * 1024;  // default 64mb, overridden from config
+size_t PACK_CHUNK_SIZE = 64 * 1024 * 1024;  // default 64mb, overwriten from config
 char*  FP_LINK_OVERRIDE = NULL;
 void range_to_span(SourceRange r, LineStarts* ls, uint32_t* line_start, uint16_t* col_start, uint32_t* line_end, uint16_t* col_end);
 static void gw_init(GroupWriters* gw, const char* project_name, const char* source_file, uint64_t source_hash);

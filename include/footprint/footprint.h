@@ -221,6 +221,8 @@ char* fp_snapshot_path(const char* project);
 void fp_snapshot_write(const char* project, const char* source_file, const char* source, size_t source_len);
 char* fp_snapshot_read(const char* project, const char* source_file);
 
+void handle_new_project(const char* proj_name);
+
 #ifdef __cplusplus
 }
 #endif

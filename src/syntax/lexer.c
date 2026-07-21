@@ -218,7 +218,6 @@ static void lexer_words(Lexer* self) {
     else if (strcmp(word, "global")    == 0) self->top.tag = Locals;
     else if (strcmp(word, "public")      == 0) self->top.tag = Publics;
     else if (strcmp(word, "unsafe")   == 0) self->top.tag = Unsafes;
-    else if (strcmp(word, "self")     == 0) self->top.tag = Selfs;
     else if (strcmp(word, "as")       == 0) self->top.tag = Ass;
     else if (strcmp(word, "then")     == 0) self->top.tag = Thens;
     else if (strcmp(word, "end")      == 0) self->top.tag = Ends;
@@ -250,7 +249,6 @@ static void lexer_words(Lexer* self) {
     else if (strcmp(word, "float32")  == 0) { self->top.tag = Floats; self->top.data.value_int = 32; }
     else if (strcmp(word, "float64")  == 0) { self->top.tag = Floats; self->top.data.value_int = 64; }
     else if (strcmp(word, "char")     == 0) { self->top.tag = Chars; self->top.data.value_int = 8; }
-    else if (strcmp(word, "str")   == 0) { self->top.tag = Strings; self->top.data.value_int = 0; }
     else if (strcmp(word, "bool")   == 0) self->top.tag = Bools; 
     else if (strcmp(word, "null") == 0) self->top.tag = Nulls;
     else if (strcmp(word, "void") == 0) self->top.tag = Voids;

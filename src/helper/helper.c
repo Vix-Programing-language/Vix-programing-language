@@ -58,6 +58,127 @@ Type infer_expr_type(Register* reg, Exprs* e) {
             }
             return (Type){ .tag = Type_Tuple, .data.tuple = { .elems = elems, .elems_count = n } };
         }
+
+        case Expr_Field: {
+            Type parent_type = infer_expr_type(reg, e->data.field_access.object);
+            if (parent_type.tag != Type_Custom) return (Type){0};
+
+            StringView owner_sv = sv_from_range(parent_type.data.custom.name);
+            RegisterEntry* owner_entry = register_get(reg, owner_sv);
+            if (!owner_entry) owner_entry = register_by_name(owner_sv);
+            if (!owner_entry) return (Type){0};
+
+            StructParam* fields = NULL;
+            size_t fields_count = 0;
+            if (owner_entry->tag == Reg_Struct) { fields = owner_entry->data.strct.fields; fields_count = owner_entry->data.strct.fields_count;
+            } else if (owner_entry->tag == Reg_Class) { fields = owner_entry->data._class.fields; fields_count = owner_entry->data._class.fields_count;
+            } else {
+                return (Type){0};
+            }
+
+            StringView target_field = sv_from_range(e->data.field_access.field);
+            for (size_t i = 0; i < fields_count; i++) {
+                StringView fname = sv_from_range(fields[i].name);
+                if (fname.len == target_field.len && memcmp(fname.ptr, target_field.ptr, fname.len) == 0) {
+                    return fields[i].type;
+                }
+            }
+
+            return (Type){0};
+        }
+
+        case Expr_Class_Calls: {
+            Type parent_type = infer_expr_type(reg, e->data.class_calls.object);
+            if (parent_type.tag != Type_Custom) return (Type){0};
+
+            StringView owner_sv = sv_from_range(parent_type.data.custom.name);
+            RegisterEntry* owner_entry = register_get(reg, owner_sv);
+            if (!owner_entry) owner_entry = register_by_name(owner_sv);
+            if (!owner_entry) return (Type){0};
+            if (owner_entry->tag != Reg_Class) return (Type){0};
+
+            StringView method_name = sv_from_range(e->data.class_calls.function);
+            FunctionMethod* methods = owner_entry->data._class.methods;
+            size_t methods_count = owner_entry->data._class.methods_count;
+
+            for (size_t i = 0; i < methods_count; i++) {
+                StringView mname = sv_from_range(methods[i].name);
+                if (mname.len == method_name.len && memcmp(mname.ptr, method_name.ptr, mname.len) == 0) {
+                    return methods[i].return_type;
+                }
+            }
+            return (Type){0};
+        }
+        case Expr_Idx: {
+            Register* original_scope = find_original_parent_scope(reg);
+            StringView name = {0};
+            Type base_type = (Type){0};
+
+            if (e->data.idx.base) {
+                switch (e->data.idx.base->tag) {
+                    case Expr_Identifiers: {
+                        name = sv_from_range(e->data.idx.base->data.identifiers.name); 
+                        break;
+                    }
+                    case Expr_Field: {
+                        Exprs* obj = e->data.idx.base->data.field_access.object;
+
+                        while (obj && obj->tag == Expr_Field) {
+                            obj = obj->data.field_access.object;
+                        }
+
+                        if (!obj || obj->tag != Expr_Identifiers) {
+                            break;
+                        }
+                        name = sv_from_range(obj->data.identifiers.name);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+
+            RegisterEntry* entry = register_get(original_scope, name);
+            
+            if (entry) {
+                switch (entry->tag) {
+                    case Reg_Var:   base_type = entry->data.var.type; break;
+                    case Reg_Let:   base_type = entry->data.let.type; break;
+                    case Reg_Const: base_type = entry->data.const_.type; break;
+                    case Reg_Param: base_type = entry->data.var.type; break;
+                    default: break;
+                }
+            } else {
+                return (Type){ .tag = Type_Void };
+            }
+
+            switch (base_type.tag) {
+                case Type_Ptr:
+                    if (base_type.data.ptr.inner) {
+                        return *base_type.data.ptr.inner; 
+                    }
+                    break;
+
+                case Type_Array:
+                    if (base_type.data.array_t.inner) {
+                        return *base_type.data.array_t.inner; 
+                    }
+                    break;
+
+                case Type_RawPtr:
+                    if (base_type.data.raw_ptr.inner) {
+                        return *base_type.data.raw_ptr.inner; 
+                    }
+                    break;
+
+                default: 
+                    return base_type; 
+            }
+            
+            return (Type){ .tag = Type_Void };
+        }
+
+
         default:
             return (Type){0};
     }
@@ -71,7 +192,6 @@ Type type_from_range(SourceRange r) {
     size_t len = r.end - r.start;
 
     if (len == 4 && memcmp(r.start, "bool", 4) == 0) return (Type){ .tag = Type_Bool };
-    if (len == 3 && memcmp(r.start, "str", 3)  == 0)  return (Type){ .tag = Type_Str }; 
     if (len == 4 && memcmp(r.start, "char", 4) == 0)  return (Type){ .tag = Type_Char };
     if (len == 4 && memcmp(r.start, "void", 4) == 0)  return (Type){ .tag = Type_Void };
 
@@ -339,4 +459,8 @@ bool is_enum_variant(const RegisterEntry* entry, SourceRange name) {
         }
     }
     return false;
+}
+
+bool expr_exists(Exprs expr) {
+    return expr.tag != 0 || expr.data.literals.range.start != NULL;
 }

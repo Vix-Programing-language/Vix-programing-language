@@ -23,6 +23,7 @@
 #include <process.h>
 #include <windows.h>
 #include <direct.h>
+#include <time.h>
 #include "uio.h"
 #define strcasecmp  _stricmp
 #define strncasecmp _strnicmp

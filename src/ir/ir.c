@@ -271,36 +271,51 @@ static void lower_if(Register *reg, uint32_t id, IR_StmtArr *out) {
 
 static void lower_while(Register *reg, uint32_t id, IR_StmtArr *out) {
     RegisterEntry *entry = register_from_scope(reg, id);
+    if (!entry) return;
+
     RegisterEntry *cond_entry = register_from_scope(entry->data.while_.cond_child, entry->data.while_.cond_id);
     IR_Expr cond = lower_expr(entry->data.while_.cond_child, cond_entry);
+    
     IR_StmtArr body = {0};
-    lower_stmt(entry->data.while_.body_child, (IR_Module){0}, &body);
+
+    if (entry->data.while_.body_child) {
+        lower_stmt(entry->data.while_.body_child, (IR_Module){0}, &body);
+    }
 
     ARR_PUSH(*out, ((IR_Stmt){
         .tag = IR_Stmt_While,
+        .origin = entry->decl_range,
         .data.while_ = {
             .cond = ir_expr_alloc(cond),
             .body = body.data,
             .body_count = body.len,
+            .child_reg = entry->data.while_.body_child,
         },
     }));
 }
 
 static void lower_for(Register *reg, uint32_t id, IR_StmtArr *out) {
     RegisterEntry *entry = register_from_scope(reg, id);
+    if (!entry) return;
+
     RegisterEntry *iter_entry = register_from_scope(entry->data.for_.iter_child, entry->data.for_.iter_id);
     IR_Expr iter = lower_expr(entry->data.for_.iter_child, iter_entry);
+    
     IR_StmtArr body = {0};
-
-    lower_stmt(entry->data.for_.body_child, (IR_Module){0}, &body);
+    
+    if (entry->data.for_.body_child) {
+        lower_stmt(entry->data.for_.body_child, (IR_Module){0}, &body);
+    }
 
     ARR_PUSH(*out, ((IR_Stmt){
         .tag = IR_Stmt_For,
+        .origin = entry->decl_range,
         .data.for_ = {
             .var = entry->data.for_.var,
             .iter = ir_expr_alloc(iter),
             .body = body.data,
             .body_count = body.len,
+            .child_reg = entry->data.for_.body_child,
         },
     }));
 }
@@ -564,6 +579,7 @@ IR_Def lower_function(Register *reg, uint32_t id) {
 
 IR_Expr lower_expr(Register *reg, RegisterEntry *entry) {
     if (!entry) {
+        printf("Failed, NULL entry!");
         return (IR_Expr){0};
     }
 
@@ -741,22 +757,6 @@ IR_Expr lower_expr(Register *reg, RegisterEntry *entry) {
             };
         }
 
-        case Reg_ExprBinaryOp: {
-            RegisterEntry* left_entry  = register_from_scope(reg, entry->data.expr_binary_op.left_id);
-            RegisterEntry* right_entry = register_from_scope(reg, entry->data.expr_binary_op.right_id);
-            IR_Expr* lhs = left_entry  ? ir_expr_alloc(lower_expr(reg, left_entry))  : NULL;
-            IR_Expr* rhs = right_entry ? ir_expr_alloc(lower_expr(reg, right_entry)) : NULL;
-            return (IR_Expr){
-                .tag = IR_Expr_BinOp,
-                .origin = entry->decl_range,
-                .data.bin = {
-                    .op = entry->data.expr_binary_op.op,
-                    .lhs = lhs,
-                    .rhs = rhs,
-                },
-            };
-        }
-
         case Reg_ExprUnary: {
             IR_Expr* operand = entry->data.expr_unary.operand ? ir_expr_alloc(lower_expr(reg, entry->data.expr_unary.operand)) : NULL;
             return (IR_Expr){
@@ -768,30 +768,66 @@ IR_Expr lower_expr(Register *reg, RegisterEntry *entry) {
                 },
             };
         }
-
         case Reg_ExprIdx: {
-            RegisterEntry* base_entry  = register_from_scope(reg, entry->data.idx.base_id);
-            RegisterEntry* index_entry = register_from_scope(reg, entry->data.idx.index_id);
-
+            RegisterEntry* base_entry  = register_from_global(entry->data.idx.base_id);
+            RegisterEntry* index_entry = register_from_global(entry->data.idx.index_id);
             IR_Expr* object = base_entry  ? ir_expr_alloc(lower_expr(reg, base_entry))  : NULL;
             IR_Expr* index  = index_entry ? ir_expr_alloc(lower_expr(reg, index_entry)) : NULL;
+
+
             return (IR_Expr){
                 .tag = IR_Expr_Idx,
                 .ty  = entry->data.idx.elem_ty,
                 .origin = entry->decl_range,
-                .data.idx = { .object = object, .index = index, .range = entry->data.idx.range, .is_const = entry->data.idx.is_const },
+                .data.idx = {
+                    .object   = object,
+                    .index    = index,
+                    .range    = entry->data.idx.range,
+                    .is_const = entry->data.idx.is_const,
+                },
+            };
+        }
+        case Reg_ExprBinaryOp: {
+            RegisterEntry* left_entry  = register_from_global(entry->data.expr_binary_op.left_id);
+            RegisterEntry* right_entry = register_from_global(entry->data.expr_binary_op.right_id);
+
+            IR_Expr* lhs = left_entry  ? ir_expr_alloc(lower_expr(reg, left_entry))  : NULL;
+            IR_Expr* rhs = right_entry ? ir_expr_alloc(lower_expr(reg, right_entry)) : NULL;
+
+
+            return (IR_Expr){
+                .tag = IR_Expr_BinOp,
+                .origin = entry->decl_range,
+                .data.bin = {
+                    .op  = entry->data.expr_binary_op.op,
+                    .lhs = lhs,
+                    .rhs = rhs,
+                },
             };
         }
 
         case Reg_ExprArray: {
             size_t n = entry->data.array.elems_count;
             ARR(IR_Expr*) elems = {0};
-            LOWER_ARR(IR_Expr*, elems, entry->data.array.elems_count, ir_expr_alloc(lower_expr(reg, entry->data.array.elems[_i])));
+            
+            Register* array_reg = entry->data.array.child_reg ? entry->data.array.child_reg : reg;
 
+            for (size_t i = 0; i < n; i++) {
+                RegisterEntry* elem_entry = register_from_scope(array_reg, entry->data.array.elem_ids[i]);
+                
+                IR_Expr* lowered_elem = elem_entry ? ir_expr_alloc(lower_expr(array_reg, elem_entry)) : NULL;
+                ARR_PUSH(elems, lowered_elem);
+            }
+                
             return (IR_Expr){
                 .tag = IR_Expr_Array,
                 .origin = entry->decl_range,
-                .data.array = { .elems = elems.data, .elems_count = n },
+                .data.array = { 
+                    .elems = elems.data, 
+                    .elems_count = n, 
+                    .ty = entry->data.array.ty,
+                    .empty = entry->data.array.empty,
+                },
             };
         }
         
@@ -806,22 +842,36 @@ IR_Expr lower_expr(Register *reg, RegisterEntry *entry) {
                 .data.tuple = { .elems = elems.data, .elems_count = n },
             };
         }
-
-        case Reg_ExprField: {
-            IR_Expr* object = entry->data.expr_field.object ? ir_expr_alloc(lower_expr(reg, entry->data.expr_field.object)) : NULL;  
-
+        case Reg_Param:
+        case Reg_Var:
+        case Reg_Let: {
             return (IR_Expr){
-                .tag = IR_Expr_Field,
-                .origin = entry->decl_range,
-                .data.field = {
-                    .object= object,
-                    .field = entry->data.expr_field.field,
-                    .kind = entry->data.expr_field.kind,
-                    .type_eid = entry->data.expr_field.type_eid,
+                .tag = IR_Expr_VarRef,
+                .data.var_ref = {
+                    .name = entry->decl_name_range,
+                    .eid  = entry->eid,
                 },
+                .origin = entry->decl_range,
+                .ty = entry->data.var.type,
             };
         }
 
+
+        case Reg_ExprField: {
+            IR_Expr* object = entry->data.expr_field.object ? ir_expr_alloc(lower_expr(reg, entry->data.expr_field.object))  : NULL;
+
+            return (IR_Expr){
+                .tag = IR_Expr_Field,
+                .data.field = {
+                    .object   = object,
+                    .field    = entry->data.expr_field.field,
+                    .kind     = entry->data.expr_field.kind,
+                    .type_eid = entry->data.expr_field.type_eid,
+                },
+                .origin = entry->data.expr_field.range,
+            };
+        }
+        
         default:
             return (IR_Expr){0};
     }

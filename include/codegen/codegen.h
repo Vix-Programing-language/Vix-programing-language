@@ -19,6 +19,7 @@ typedef struct {
     char* name;
     EntityID eid;
     LLVMTypeRef return_type;
+    LLVMTypeRef *param_type;
     LLVMTypeRef *params;
     size_t params_count;
     IR_Stmt *body;
@@ -70,10 +71,6 @@ void codegen_new(const char *filename, const char *source) {
     llvm_builder = LLVMCreateBuilderInContext(llvm_ctx);
     codegen_source = source;
 
-    LLVMTypeRef str_field_types[] = { LLVMPointerType(LLVMInt8TypeInContext(llvm_ctx), 0), LLVMInt64TypeInContext(llvm_ctx) };
-    str_type = LLVMStructCreateNamed(llvm_ctx, "str");
-    LLVMStructSetBody(str_type, str_field_types, 2, 0);
-
     symbol_table_init();
 }
 
@@ -111,10 +108,6 @@ LLVMTypeRef set_type(Type t) {
         case Type_Float: return t.data.float_t.bits == 64 ? LLVMDoubleTypeInContext(llvm_ctx) : LLVMFloatTypeInContext(llvm_ctx);
         case Type_Bool:  return LLVMInt1TypeInContext(llvm_ctx);
         case Type_Char:  return LLVMInt8TypeInContext(llvm_ctx);
-        case Type_Str: {
-            LLVMTypeRef field_types[] = { LLVMPointerType(LLVMInt8TypeInContext(llvm_ctx), 0), LLVMInt64TypeInContext(llvm_ctx), };
-            return LLVMStructTypeInContext(llvm_ctx, field_types, 2, 0);
-        }
         case Type_Void:  return LLVMVoidTypeInContext(llvm_ctx);
         case Type_Ptr:
         case Type_RawPtr: return LLVMPointerType(LLVMInt8TypeInContext(llvm_ctx), 0);
@@ -126,6 +119,11 @@ LLVMTypeRef set_type(Type t) {
             return result;
         }
 
+        case Type_Str: {
+            LLVMTypeRef field_types[] = { LLVMPointerType(LLVMInt8TypeInContext(llvm_ctx), 0), LLVMInt64TypeInContext(llvm_ctx), };
+            return LLVMStructTypeInContext(llvm_ctx, field_types, 2, 0);
+        }
+
         case Type_FnPtr: {
             LLVMTypeRef *param_tys = malloc(sizeof(LLVMTypeRef) * t.data.fn_ptr.params_count);
             for (size_t i = 0; i < t.data.fn_ptr.params_count; i++) param_tys[i] = set_custom_type(t.data.fn_ptr.params[i]);
@@ -135,6 +133,15 @@ LLVMTypeRef set_type(Type t) {
             free(param_tys);
             return LLVMPointerType(fn_ty, 0);
         }
+
+        case Type_Array: {
+            if (!t.data.array_t.inner) {
+                return LLVMInt32TypeInContext(llvm_ctx);
+            }
+            LLVMTypeRef elem_ty = set_custom_type(*t.data.array_t.inner);
+            return LLVMArrayType(elem_ty, (unsigned int)t.data.array_t.len);
+        }
+        
         case Type_Custom: { 
             const char* type_name = null_terminated(t.data.custom.name);
             LLVMTypeRef struct_ty = LLVMGetTypeByName2(llvm_ctx, type_name);
@@ -145,7 +152,7 @@ LLVMTypeRef set_type(Type t) {
             RegisterEntry* enum_entry = register_by_target(sv, tags, 1);
             if (enum_entry) return get_or_create_enum_type(enum_entry, type_name);
 
-            return LLVMPointerType(LLVMInt8TypeInContext(llvm_ctx), 0); // last-resort fallback only for genuinely unknown types
+            return LLVMPointerType(LLVMInt8TypeInContext(llvm_ctx), 0);
         }
         default: return LLVMInt32TypeInContext(llvm_ctx);
     }
@@ -210,11 +217,13 @@ LLVMValueRef codegen_expr_binop(Register *reg, IR_Expr *expr);
 LLVMValueRef codegen_expr_unop(Register *reg, IR_Expr *expr);
 
 
+LLVMValueRef codegen_expr_array(Register *reg, IR_Expr *expr);
 LLVMValueRef codegen_expr_call(Register *reg, IR_Expr *expr);
 LLVMValueRef codegen_expr_tuple(Register *reg, IR_Expr *expr);
 LLVMValueRef codegen_expr_tupleindex(Register *reg, IR_Expr *expr);
 LLVMValueRef codegen_expr_index(Register *reg, IR_Expr *expr);
 LLVMValueRef codegen_expr_make_struct(Register *reg, IR_Expr *expr);
+LLVMValueRef codegen_expr_make_enum(Register *reg, IR_Expr *expr);
 
 LLVMValueRef codegen_expr_var(Register *reg, IR_Expr *expr);
 LLVMValueRef codegen_expr_method(Register *reg, IR_Expr *expr);
@@ -227,8 +236,8 @@ void codegen_stmts(Register *reg, IR_Stmt *stmts, size_t count);
 void codegen_generate_var(uint32_t id, Codegen_Var v);
 void codegen_generate_let(uint32_t id, Codegen_Let l);
 void codegen_generate_const(uint32_t id, Codegen_Const c, bool globle);
-void codegen_predeclare_function(Codegen_FuncDef fn);
-LLVMValueRef codegen_expr_make_enum(Register *reg, IR_Expr *expr);
+
+IR_Module codegen_def(Register *reg, IR_Module mod);
 
 
 void codegen_generate_struct(Codegen_Struct s);
@@ -239,4 +248,5 @@ void codegen_generate_while(Register *reg, struct IR_Expr *cond_expr, struct IR_
 void codegen_generate_let(uint32_t id, Codegen_Let l);
 void codegen_generate_for(Register *reg, struct IR_Expr *iter_expr, struct IR_Stmt *body, size_t body_count);
 void codegen_generate_match(Register *reg, LLVMValueRef match_val, IR_MatchArm *arms, size_t arms_count, struct IR_Stmt *default_body, size_t default_body_count);
+
 #endif

@@ -12,11 +12,12 @@ void codegen_predeclare_function(Codegen_FuncDef fn) {
     LLVMTypeRef func_type = LLVMFunctionType(fn.return_type, fn.params, fn.params_count, 0);
     LLVMAddFunction(llvm_mod, fn.name, func_type);
 }
-
 void codegen_generate_function(Register *reg, uint32_t *param_ids, Codegen_FuncDef fn) {
     LLVMTypeRef func_type = LLVMFunctionType(fn.return_type, fn.params, fn.params_count, 0);
     LLVMValueRef llvm_func = LLVMGetNamedFunction(llvm_mod, fn.name);
-    if (!llvm_func) llvm_func = LLVMAddFunction(llvm_mod, fn.name, func_type);
+    if (!llvm_func) {
+        llvm_func = LLVMAddFunction(llvm_mod, fn.name, func_type);
+    }
 
     LLVMBasicBlockRef entry_block = LLVMAppendBasicBlock(llvm_func, "entry");
     LLVMPositionBuilderAtEnd(llvm_builder, entry_block);
@@ -26,9 +27,13 @@ void codegen_generate_function(Register *reg, uint32_t *param_ids, Codegen_FuncD
         LLVMSetValueName2(llvm_param, fn.param_names[i], strlen(fn.param_names[i]));
         LLVMValueRef alloca = LLVMBuildAlloca(llvm_builder, fn.params[i], fn.param_names[i]);
         LLVMBuildStore(llvm_builder, llvm_param, alloca);
-        if (param_ids[i] != 0) symbol_table_set(param_ids[i], alloca);
+
+        if (param_ids[i] != 0) {
+            symbol_table_set(param_ids[i], alloca);
+        }
     }
 }
+
 
 void codegen_generate_struct(Codegen_Struct s) {
     LLVMTypeRef struct_type = LLVMStructCreateNamed(llvm_ctx, s.name);
@@ -134,23 +139,55 @@ void codegen_generate_if(Register *reg, LLVMValueRef cond, struct IR_Stmt *body,
 }
 
 void codegen_generate_while(Register *reg, struct IR_Expr *cond_expr, struct IR_Stmt *body, size_t body_count) {
-    LLVMValueRef current_func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(llvm_builder));
+    if (!llvm_builder) {
+        fprintf(stderr, "[DEBUG WHILE ERROR] llvm_builder is NULL!\n");
+        return;
+    }
+
+    LLVMBasicBlockRef current_bb = LLVMGetInsertBlock(llvm_builder);
+    if (!current_bb) {
+        fprintf(stderr, "[DEBUG WHILE ERROR] Builder has no current basic block set!\n");
+        return;
+    }
+
+    LLVMValueRef current_func = LLVMGetBasicBlockParent(current_bb);
+    if (!current_func) {
+        fprintf(stderr, "[DEBUG WHILE ERROR] Basic block has no parent function!\n");
+        return;
+    }
 
     LLVMBasicBlockRef cond_block = LLVMAppendBasicBlock(current_func, "while.cond");
     LLVMBasicBlockRef body_block = LLVMAppendBasicBlock(current_func, "while.body");
     LLVMBasicBlockRef merge_block = LLVMAppendBasicBlock(current_func, "while.merge");
-
     LLVMBuildBr(llvm_builder, cond_block);
-
     LLVMPositionBuilderAtEnd(llvm_builder, cond_block);
-    LLVMValueRef cond = codegen_expr(reg, cond_expr);
-    LLVMBuildCondBr(llvm_builder, cond, body_block, merge_block);
 
+    if (!cond_expr) {
+        fprintf(stderr, "[DEBUG WHILE ERROR] cond_expr is NULL!\n");
+        return;
+    }
+
+    LLVMValueRef cond = codegen_expr(reg, cond_expr);
+
+    if (!cond) {
+        fprintf(stderr, "[DEBUG WHILE ERROR] codegen_expr returned NULL for condition!\n");
+        return;
+    }
+
+    LLVMBuildCondBr(llvm_builder, cond, body_block, merge_block);
     LLVMPositionBuilderAtEnd(llvm_builder, body_block);
+
     if (body_count > 0) {
+        if (!body) {
+            fprintf(stderr, "[DEBUG WHILE ERROR] body_count > 0 (%zu) but body pointer is NULL!\n", body_count);
+            return;
+        }
         codegen_stmts(reg, body, body_count);
     }
-    if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(llvm_builder))) {
+
+    LLVMBasicBlockRef body_end_bb = LLVMGetInsertBlock(llvm_builder);
+
+    if (!LLVMGetBasicBlockTerminator(body_end_bb)) {
         LLVMBuildBr(llvm_builder, cond_block);
     }
 
@@ -233,7 +270,6 @@ void codegen_generate_match(Register *reg, LLVMValueRef match_val, IR_MatchArm *
         LLVMAddCase(switch_instr, case_const, block);
     }
 
-    printf("Part 3 successful!\n");
 
     for (size_t i = 0; i < arms_count; i++) {
         LLVMPositionBuilderAtEnd(llvm_builder, ARR_AT(arm_blocks, i));

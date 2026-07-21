@@ -173,6 +173,9 @@ void check_generic(Register* reg, GenericTables* g) {
 void check_enumcall(RegisterEntry* entry, GenericTables* g) {
     Type* generic = set_generic_type(entry->data.expr_enum_call.generic_args, entry->data.expr_enum_call.generic_args_count);
     size_t generic_count = entry->data.expr_enum_call.generic_args_count;
+
+    if (generic_count == 0) return;
+
     SourceRange name = entry->data.expr_enum_call.name;
     RegisterEntry* enums = register_by_name(sv_from_range(name));
 
@@ -231,6 +234,9 @@ void check_enumcall(RegisterEntry* entry, GenericTables* g) {
 void check_structcall(RegisterEntry* entry, GenericTables* g) {
     Type* generic = set_generic_type(entry->data.expr_struct_call.generic_args, entry->data.expr_struct_call.generic_args_count);
     size_t generic_count = entry->data.expr_struct_call.generic_args_count;
+
+    if (generic_count == 0) return;
+
     SourceRange name = entry->data.expr_struct_call.name;
 
     RegisterEntry* structs = register_by_name(sv_from_range(name));

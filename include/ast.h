@@ -409,7 +409,7 @@ struct Exprs {
     ExprsTag tag;
     union {
         struct { SourceRange name; SourceRange* generic_params; size_t generic_params_count; Param* param; size_t param_count; SourceRange range; } function_call;
-        struct { SourceRange name; SourceRange function; SourceRange* generic_params; size_t generic_params_count; Param* param; size_t param_count; SourceRange range; } class_calls;
+        struct { SourceRange name; SourceRange function; SourceRange* generic_params; size_t generic_params_count; Param* param; size_t param_count; SourceRange range;  Exprs* object; } class_calls;
         struct { SourceRange name; SourceRange function; SourceRange* generic_params; size_t generic_params_count; Param* param; size_t param_count; SourceRange range; } struct_calls;
         struct { SourceRange name; SourceRange field; SourceRange* generic_params; size_t generic_params_count; Param* param; size_t param_count; SourceRange range; } enum_calls;
         struct { Exprs* left; LexerTokenTag op; Exprs* right; SourceRange range; } binary_ops;
@@ -422,8 +422,8 @@ struct Exprs {
         struct { SourceRange range; SourceRange target; Param* args; size_t args_count; bool is_call; } self_access;
         struct { BuiltinFnTag tag; Type* ty; } builtins;
         struct { Exprs* base; Exprs* index; SourceRange range; } idx;
-        struct { Exprs* elems; size_t elems_count; } array;
-        struct { SourceRange object; SourceRange field; SourceRange range; } field_access;
+        struct { Exprs* elems; size_t elems_count; Type* ty; size_t empty; } array;
+        struct { Exprs* object; SourceRange field; SourceRange range; } field_access;
         struct { Exprs* elems; size_t elems_count; } tuple;
     } data;
 };

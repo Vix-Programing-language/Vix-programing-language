@@ -18,7 +18,7 @@ typedef enum {
 
 
 typedef enum {
-    Reg_Var, 
+    Reg_Var = 1, 
     Reg_Let, 
     Reg_Const, 
     Reg_Local,
@@ -74,6 +74,13 @@ typedef struct {
     StringView def_name;
 } GenericInstance;
 
+
+typedef struct {
+    uint32_t depth;
+    Register* original_scope;
+} DepthInfo;
+
+KHASHL_MAP_INIT(KH_LOCAL, DepthTable, depth_table, uint32_t, DepthInfo, kh_hash_uint32, kh_eq_generic)
 KHASHL_MAP_INIT(KH_LOCAL, GenericInstanceTable, mono_table, StringView, GenericInstance, string_hash, string_eq)
 
 typedef struct {
@@ -102,7 +109,7 @@ struct RegisterEntry {
     uint32_t owner_fn_id;
     union { 
         struct { Type type; bool is_pub; } local;
-        struct { Param* params; size_t params_count; Type return_type; bool is_pub; bool is_unsafe; Register* child_reg; SourceRange* generic_params; size_t generic_params_count; GenericParam* generic_param_nodes; Stmts* body; size_t body_count; bool is_method } function;
+        struct { Param* params; size_t params_count; Type return_type; bool is_pub; bool is_unsafe; Register* child_reg; SourceRange* generic_params; size_t generic_params_count; GenericParam* generic_param_nodes; Stmts* body; size_t body_count; bool is_method; RegisterEntry* owner_class; } function;
         struct { SourceRange name; Type return_type; Param* params; size_t params_count; bool is_pub; } extern_func;
         struct { StructParam* fields; size_t fields_count; bool is_pub; SourceRange* generic_params; size_t generic_params_count; GenericParam* generic_param_nodes; } strct;
         struct { EnumVariant* variants; size_t variants_count; bool is_pub; SourceRange* generic_params; size_t generic_params_count; GenericParam* generic_param_nodes; Register* child_reg; } enm;
@@ -115,7 +122,7 @@ struct RegisterEntry {
         struct { SourceRange name; SourceRange field; Type resolved_type; SourceRange* generic_args; size_t generic_args_count; Param* params; size_t params_count; VariantData variant; Register* child_reg; uint32_t* arg_ids; size_t arg_ids_count; } expr_enum_call;
         struct { Type left_type; LexerTokenTag op; Type right_type; Type resolved_type; uint32_t left_id; uint32_t right_id; } expr_binary_op;
         struct { LexerTokenTag op; RegisterEntry* operand; Type resolved_type; } expr_unary;
-        struct { RegisterEntry** elems; size_t elems_count; } array;
+        struct { uint32_t* elem_ids; size_t elems_count; Type* ty; size_t empty; Register* child_reg; } array;
         struct { uint32_t expr_id; Type* ty; SourceRange range; Register* child_reg; } expr_cast;
         struct { RegisterEntry* object; SourceRange method; RegisterEntry** args; size_t args_count; SourceRange range; } expr_method_call; 
         struct { SourceRange name; Type resolved_type; } expr_identifier;
@@ -129,8 +136,8 @@ struct RegisterEntry {
         struct { Type type; bool is_pub; RegisterEntry* init; Register* child_reg; } const_;
 
         struct { IfPat pat; uint32_t cond_id; uint32_t bind_id; Register* cond_child; Register* then_child; Register* else_child; Stmts* body; size_t body_count; Stmts* else_body; size_t else_body_count; } if_;
-        struct { uint32_t cond_id; Register* cond_child; Register* body_child; Stmts* body; size_t body_count; } while_;
-        struct { SourceRange var; uint32_t iter_id; Register* iter_child; Register* body_child; Stmts* body; size_t body_count; } for_;
+        struct { uint32_t cond_id; Register* cond_child; Register* body_child; Stmts* body; size_t body_count; Register* child_reg; } while_;
+        struct { SourceRange var; uint32_t iter_id; Register* iter_child; Register* body_child; Stmts* body; size_t body_count; Register* child_reg; } for_;
         struct { uint32_t expr_id; Register* expr_child; Register* default_child; Register** arm_children; MatchArm* cases; size_t cases_count; Stmts* default_body; size_t default_body_count; } match_;
 
         struct { EntityID expr; bool has_expr; Type return_type; } return_;
@@ -140,7 +147,7 @@ struct RegisterEntry {
         struct { SourceRange name; Stmts* body; size_t body_count; bool is_pub; } module_;
         struct { SourceRange target; AtomicOpTag op; size_t args_count; OrderingTag ordering; OrderingTag ordering2; } atomic_;
         struct { ImportKind kind; SourceRange name; SourceRange path; } import_; 
-        struct { RegisterEntry* object; SourceRange field; SourceRange range; FieldOwnerKind kind; EntityID type_eid; } expr_field;
+        struct { RegisterEntry* object; SourceRange field; SourceRange range; FieldOwnerKind kind; EntityID type_eid; Register* child_reg } expr_field;
         struct { RegisterEntry** elems; size_t elems_count; } expr_tuple;
         struct { uint32_t base_id; uint32_t index_id; SourceRange range; Type elem_ty; bool is_const; } idx;
     } data;
@@ -254,21 +261,36 @@ extern Register* global_reg_ptr;
 extern RegisterEntry** global_flat;
 extern size_t global_flat_cap;
 extern IdTable* global_parents;
+extern DepthTable* global_depth_map;
+
 void global_flat_insert(uint32_t id, RegisterEntry* e);
-
-
+void depth_map_init(void);
+void depth_map_insert(uint32_t id, uint32_t depth, Register* original_scope);
 void global_registry_init(void);
+void func_body_list_free(FuncBodyList* fl);
+void global_registry_init(void);
+
+
+DepthInfo* depth_map_lookup(uint32_t id);
+EntityID register_insert_id(Register* reg, RegisterEntry entry, uint32_t id);
+
+uint32_t depth_from_id(uint32_t id);
+uint32_t depth_from_scope(Register* reg);
+
+RegisterEntry* find_entry_by_id(uint32_t id);
+RegisterEntry* find_entry_by_scope(Register* reg);
 RegisterEntry* register_from_global(uint32_t id);
 RegisterEntry* register_from_scope(Register* reg, uint32_t id);
-uint32_t register_get_function(uint32_t child_id);
-Register* make_child(Register* parent);
-bool register_insert_child(Register* reg, RegisterEntry entry, uint32_t parent_flat_id);
+Register* find_original_parent_scope(Register* reg);
 RegisterEntry* register_by_target(StringView name, int* tags, size_t tags_count);
-EntityID register_insert_id(Register* reg, RegisterEntry entry, uint32_t id);
+
+Register* make_child(Register* parent);
+
+uint32_t calculate_register_depth(Register* reg);
+uint32_t register_get_function(uint32_t child_id);
+
+bool register_insert_child(Register* reg, RegisterEntry entry, uint32_t parent_flat_id);
 typedef ARR(RegisterEntry) EntryArena;
 extern EntryArena entry_arena;
-
-
-
 
 #endif

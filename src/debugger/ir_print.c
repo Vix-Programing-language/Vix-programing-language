@@ -12,7 +12,6 @@ static void print_ir_type(Type t) {
         case Type_Void:   printf("void");   return;
         case Type_Bool:   printf("bool");   return;
         case Type_Char:   printf("char");   return;
-        case Type_Str:    printf("str");    return;
         case Type_Ptr:    printf("*");      print_ir_type(*t.data.ptr.inner);     return;
         case Type_RawPtr: printf("**");     print_ir_type(*t.data.raw_ptr.inner); return;
         case Type_Int:
@@ -255,9 +254,6 @@ static void print_ir_funcdef(IR_FuncDef *fn, int d) {
     if (fn->is_pub)    printf(" [pub]");
     if (fn->is_unsafe) printf(" [unsafe]");
     printf("\n");
-
-    printf("body count in printer: %d\n", fn->body_count);
-
     print_ir_stmts(fn->body, fn->body_count, d + 1);
 }
 

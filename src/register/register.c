@@ -12,6 +12,7 @@ Register* global_reg_ptr = NULL;
 RegisterEntry** global_flat = NULL;
 size_t global_flat_cap = 0;
 IdTable* global_parents = NULL;
+DepthTable* global_depth_map = NULL;
 EntryArena entry_arena = {0};
 
 khint_t sv_hash(StringView sv) {
@@ -75,7 +76,8 @@ static StringView id_to_sv_alloc(uint32_t id) {
     int var_name##_len = snprintf(var_name##_buf, sizeof(var_name##_buf), "%u", id); \
     StringView var_name = (StringView){ .ptr = var_name##_buf, .len = (size_t)var_name##_len };
 
-    EntityID register_insert(Register* reg, RegisterEntry entry) {
+
+EntityID register_insert(Register* reg, RegisterEntry entry) {
     entry.eid = (EntityID){ .id = reg->counter->next_id++, .kind = entry.tag };
 
     if (reg->owner_id != 0) {
@@ -92,6 +94,14 @@ static StringView id_to_sv_alloc(uint32_t id) {
     *stable = entry;
 
     global_flat_insert(entry.eid.id, stable);
+
+    uint32_t current_depth = calculate_register_depth(reg);
+    Register* orig_scope = find_original_parent_scope(reg);
+
+    if (entry.tag == Reg_Function) {
+        orig_scope = reg;
+    }
+    depth_map_insert(entry.eid.id, current_depth, orig_scope);
 
     StringView name_key = sv_from_range(stable->decl_name_range);
     if (name_key.ptr && name_key.len > 0) {
@@ -274,6 +284,94 @@ FuncBodyList register_body(Stmts* body, size_t count, Register* reg, CheckerErrL
     for (size_t i = 0; i < count; i++) register_stmt(reg, &body[i], (SourceRange){0});
     return fl;
 }
+
+void depth_map_init(void) {
+    global_depth_map = depth_table_init();
+}
+
+void depth_map_insert(uint32_t id, uint32_t depth, Register* original_scope) {
+    if (!global_depth_map) return;
+    int absent;
+    khint_t k = depth_table_put(global_depth_map, id, &absent);
+    if (absent > 0) {
+        kh_val(global_depth_map, k) = (DepthInfo){ .depth = depth, .original_scope = original_scope };
+    }
+}
+
+DepthInfo* depth_map_lookup(uint32_t id) {
+    if (!global_depth_map) return NULL;
+    khint_t k = depth_table_get(global_depth_map, id);
+    if (k == kh_end(global_depth_map)) return NULL;
+    return &kh_val(global_depth_map, k);
+}
+
+uint32_t calculate_register_depth(Register* reg) {
+    uint32_t depth = 0;
+    Register* cur = reg;
+    while (cur) {
+        depth++;
+        cur = cur->parent;
+    }
+    return depth;
+}
+
+Register* find_original_parent_scope(Register* reg) {
+    Register* cur = reg;
+    while (cur) {
+        if (cur->owner_id != 0) {
+            RegisterEntry* owner = register_from_global(cur->owner_id);
+            if (owner && owner->tag == Reg_Function) {
+                return cur;
+            }
+        }
+        if (!cur->parent) break;
+        cur = cur->parent;
+    }
+    return cur;
+}
+
+uint32_t depth_from_id(uint32_t id) {
+    DepthInfo* info = depth_map_lookup(id);
+    return info ? info->depth : 0;
+}
+
+uint32_t depth_from_scope(Register* reg) {
+    if (!reg) return 0;
+    
+    if (reg->owner_id != 0) {
+        DepthInfo* info = depth_map_lookup(reg->owner_id);
+        if (info) {
+            return info->depth + 1; 
+        }
+    }
+    
+    return calculate_register_depth(reg);
+}
+
+RegisterEntry* find_entry_by_id(uint32_t id) {
+    DepthInfo* info = depth_map_lookup(id);
+    if (!info || !info->original_scope) {
+        return NULL;
+    }
+    
+    uint32_t owner_id = info->original_scope->owner_id;
+    if (owner_id == 0) return NULL;
+    
+    return register_from_global(owner_id);
+}
+
+RegisterEntry* find_entry_by_scope(Register* reg) {
+    if (!reg) return NULL;
+    
+    Register* orig_scope = find_original_parent_scope(reg);
+
+    if (!orig_scope || orig_scope->owner_id == 0) {
+        return NULL;
+    }
+    
+    return register_from_global(orig_scope->owner_id);
+}
+
 
 void register_free(Register* reg) {
     register_table_destroy(reg->table);

@@ -27,5 +27,6 @@ bool expr_is_empty(Exprs* expr);
 bool is_type(SourceRange tok);
 bool source_range_eq(SourceRange a, SourceRange b);
 bool is_enum_variant(const RegisterEntry* entry, SourceRange name);
+bool expr_exists(Exprs expr);
 
 #endif /* VIX_HELPER_H */

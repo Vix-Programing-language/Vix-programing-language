@@ -110,7 +110,7 @@ struct IR_Expr {
         struct { IR_Expr *ptr; } deref;
         struct { IR_Expr** elems; size_t elems_count; } make_tuple;
         struct { IR_Expr*  tuple; size_t index; } tuple_index;
-        struct { IR_Expr** elems; size_t elems_count; } array;
+        struct { IR_Expr** elems; size_t elems_count; Type* ty; size_t empty; } array;
         struct { IR_Expr* object; SourceRange field; FieldOwnerKind kind; EntityID type_eid; } field;
         struct { IR_Expr *expr; } addr_of;
         struct { IR_Expr** elems; size_t elems_count; } tuple;
@@ -145,8 +145,8 @@ struct IR_Stmt {
         struct { IR_Expr *target; LexerTokenTag op; IR_Expr *value; } assign;
         struct { IR_Expr *val; Type return_type; } ret;
         struct { IR_Expr *cond; IfPat pat; IR_Stmt *body; size_t body_count; IR_Stmt *else_body; size_t else_body_count; } if_;
-        struct { IR_Expr *cond; IR_Stmt *body; size_t body_count; } while_;
-        struct { SourceRange var; EntityID var_eid; Type var_ty; IR_Expr *iter; IR_Stmt *body; size_t body_count; } for_;
+        struct { IR_Expr *cond; IR_Stmt *body; size_t body_count; Register *child_reg; } while_;
+        struct { SourceRange var; EntityID var_eid; Type var_ty; IR_Expr *iter; IR_Stmt *body; size_t body_count; Register *child_reg; } for_;
         struct { IR_Expr *expr; IR_MatchArm *arms; size_t arms_count; IR_Stmt *default_body; size_t default_body_count; } match;
         struct { IR_Expr *expr; } expr;
         struct { EntityID eid; Type ty; IR_Expr *val; } ssa_temp;
@@ -336,9 +336,18 @@ static inline void ir_mod_push_if(IR_Module *mod, IR_Def d) {
         } \
     } while (0)
 
-IR_Module lower_stmt(Register *reg, IR_Module mod, IR_StmtArr *stmts_out);
-IR_Def lower_function(Register *reg, uint32_t id);
+
 
 Type type_from_range(SourceRange r);
+IR_Def lower_function(Register *reg, uint32_t id);
+IR_Def lower_function(Register *reg, uint32_t id);
+
+IR_Module lower_stmt(Register *reg, IR_Module mod, IR_StmtArr *stmts_out);
+IR_Module lower_stmt(Register *reg, IR_Module mod, IR_StmtArr *stmts_out);
+
+IR_Expr lower_expr(Register *reg, RegisterEntry *entry);
+IR_Expr *ir_expr_alloc(IR_Expr expr);
+void ir_print_module(IR_Module *mod);
+
 
 #endif /* VIX_IR_H */

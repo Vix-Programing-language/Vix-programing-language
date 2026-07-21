@@ -91,3 +91,5 @@ void config_free(Config *c);
 uint8_t config_pack_own_flags(const Config *c);
 bool config_find(const char *start_path, char *out, size_t cap);
 Config config_parse_upwards(const char* source_file);
+ProjectPack project_pack_sync(const char* source_file, const char* project_name, uint64_t source_hash, uint8_t config_owns_flags, const char* footprint_link, const char* project_root);
+ProjectPack project_pack_sync_from_config(const char* source_file, uint64_t source_hash, const Config* cfg);

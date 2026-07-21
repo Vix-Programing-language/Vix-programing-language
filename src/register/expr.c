@@ -6,6 +6,26 @@
 #include "helper.h"
 #include "register_tables.h"
 
+FieldOwnerKind get_kind(Register* reg, SourceRange name_range) {
+    StringView sv = sv_from_range(name_range);
+    RegisterEntry* entry = register_get(reg, sv);
+
+    if (!entry) {
+        entry = register_by_name(sv);
+    }
+
+    if (!entry) {
+        return FieldOwner_Unknown;
+    }
+
+    switch (entry->tag) {
+        case Reg_Class: return FieldOwner_Class;
+        case Reg_Struct: return FieldOwner_Struct;
+        case Reg_Enum: return FieldOwner_Enum;
+        default: return FieldOwner_Unknown;
+    }
+}
+
 EntityID register_expr_calls(Register* reg, RegisterEntry* parent, Exprs* expr, SourceRange* concrete_args, size_t concrete_args_count) {
     Register* child = make_child(reg);
 
@@ -189,32 +209,25 @@ RegisterEntry* register_expr(Register* reg, Exprs* expr, SourceRange class_name)
             return register_from_scope(reg, eid.id);
         }
 
-        
+
         case Expr_Idx: {
-            RegisterEntry* base = register_expr(reg, expr->data.idx.base,  class_name);
+            RegisterEntry* base  = register_expr(reg, expr->data.idx.base,  class_name);
             RegisterEntry* index = register_expr(reg, expr->data.idx.index, class_name);
 
-            Type base_type = (Type){0};
-            bool is_const  = false;
+            Type elem_ty = infer_expr_type(reg, expr);
+            Type base_type = infer_expr_type(reg, expr->data.idx.base);
 
-            if (base && base->tag == Reg_ExprIdentifier) {
-                RegisterEntry* base_decl = register_get(reg, sv_from_range(base->data.expr_identifier.name));
-                if (base_decl) {
-                    base_type = base_decl->data.var.type;
-                    if (base_type.tag == Type_Ptr)    is_const = base_type.data.ptr.is_const;
-                    if (base_type.tag == Type_RawPtr) is_const = base_type.data.raw_ptr.is_const;
-                }
-            }
+            bool is_const = (base_type.tag == Type_Ptr) ? base_type.data.ptr.is_const : (base_type.tag == Type_RawPtr) ? base_type.data.raw_ptr.is_const : false;
 
             RegisterEntry entry = (RegisterEntry){
                 .tag = Reg_ExprIdx,
                 .decl_range = expr->data.idx.range,
                 .data.idx = {
-                    .base_id = base ? base->eid.id : 0,
+                    .base_id  = base ? base->eid.id : 0,
                     .index_id = index ? index->eid.id : 0,
-                    .range = expr->data.idx.range,
+                    .range    = expr->data.idx.range,
                     .is_const = is_const,
-                    .elem_ty = (base_type.tag == Type_Ptr && base_type.data.ptr.inner) ? *base_type.data.ptr.inner : (base_type.tag == Type_RawPtr && base_type.data.raw_ptr.inner) ? (Type){ .tag = Type_RawPtr, .data.raw_ptr.inner = base_type.data.raw_ptr.inner } : base_type,
+                    .elem_ty  = elem_ty
                 },
             };
 
@@ -222,49 +235,53 @@ RegisterEntry* register_expr(Register* reg, Exprs* expr, SourceRange class_name)
             return register_from_scope(reg, eid.id);
         }
 
+        
         case Expr_Field: {
-            RegisterEntry* object = register_get(reg, sv_from_range(expr->data.field_access.object));
-            FieldOwnerKind kind = FieldOwner_Unknown;
-            uint32_t id = 0;
-            
-            switch (object->tag) {
-                case Reg_Class: kind = FieldOwner_Class; break;
-                case Reg_Struct: kind = FieldOwner_Struct; break;
-                case Reg_Enum: kind = FieldOwner_Enum; break;
-                case Reg_Var: {
-                    if (object->data.var.type.tag == Type_Custom) {
-                        id = register_get_id(reg, sv_from_range(object->data.var.type.data.custom.name));
-                        kind = get_kind(reg, object->data.var.type.data.custom.name);
-                    }
-                }
+            SourceRange last_field = expr->data.field_access.field;
+            StringView field_sv = sv_from_range(last_field);
+            Exprs* root_obj = expr->data.field_access.object;
+            size_t chain_depth = 0;
+            while (root_obj && root_obj->tag == Expr_Field) {
+                root_obj = root_obj->data.field_access.object;
+                chain_depth++;
             }
+
+            Register* child = make_child(reg);
+            RegisterEntry* object_entry = register_expr(child, root_obj, class_name);
+
+            Type parent_type = infer_expr_type(reg, expr->data.field_access.object);
+
+            FieldOwnerKind owner_kind = FieldOwner_Unknown;
+            uint32_t owner_id = 0;
+
+            SourceRange owner_name_range = parent_type.data.custom.name;
+            StringView owner_sv = sv_from_range(owner_name_range);
+
+            RegisterEntry* owner_entry = register_get(reg, owner_sv);
+            if (!owner_entry) {
+                owner_entry = register_by_name(owner_sv);
+            }
+
+            owner_id = register_get_id(reg, owner_sv);
+            owner_kind = get_kind(reg, owner_name_range);
 
             RegisterEntry entry = (RegisterEntry){
                 .tag = Reg_ExprField,
                 .decl_range = expr->data.field_access.range,
                 .data.expr_field = {
-                    .object = object,
-                    .field = expr->data.field_access.field,
+                    .object = object_entry,
+                    .field = last_field,
                     .range = expr->data.field_access.range,
-                    .kind = kind,
-                    .type_eid.id = id,
+                    .kind = owner_kind,
+                    .type_eid = (EntityID){ .id = owner_id },
+                    .child_reg = child,
                 },
             };
-            EntityID eid = register_insert(reg, entry);
-            return register_from_scope(reg, eid.id);
-        }
 
-        case Expr_Array: {
-            size_t n = expr->data.array.elems_count;
-            RegisterEntry** elems = n ? malloc(sizeof(RegisterEntry*) * n) : NULL;
-            for (size_t i = 0; i < n; i++) elems[i] = register_expr(reg, &expr->data.array.elems[i], (SourceRange){0});
-
-            RegisterEntry entry = (RegisterEntry){
-                .tag = Reg_ExprArray,
-                .data.array = { .elems = elems, .elems_count = n },
-            };
             EntityID eid = register_insert(reg, entry);
-            return register_from_scope(reg, eid.id);
+            RegisterEntry* result = register_from_scope(reg, eid.id);
+
+            return result;
         }
 
         case Expr_AddrOf: {
@@ -318,76 +335,23 @@ RegisterEntry* register_expr(Register* reg, Exprs* expr, SourceRange class_name)
         }
 
         case Expr_Class_Calls: {
-            StringView obj_sv = sv_from_range(expr->data.class_calls.name);
-            RegisterEntry* obj_decl = register_get(reg, obj_sv);
-            uint32_t id = 0;
-            Type obj_type = obj_decl->data.var.type;
-            RegisterEntry* obj_init = obj_decl->data.var.init;
+            RegisterEntry* obj_entry = register_expr(reg, expr->data.class_calls.object, class_name);
 
-            if (obj_type.tag == Type_Custom) {
-                RegisterEntry* parent = register_by_name(sv_from_range(obj_type.data.custom.name));
-                if (!parent) break;
+            Type obj_type = infer_expr_type(reg, expr->data.class_calls.object);
+            if (obj_type.tag != Type_Custom) break;
 
-                SourceRange* concrete_args = obj_type.data.custom.generic_args;
-                size_t concrete_args_count = obj_type.data.custom.generic_args_count;
-
-
-                id = register_expr_calls(reg, parent, expr, concrete_args, concrete_args_count).id; 
-            } else if (obj_init->tag == Type_Custom) {
-                RegisterEntry* parent = register_by_name(sv_from_range(obj_type.data.custom.name));
-                if (!parent) break;
-
-                SourceRange* concrete_args = obj_type.data.custom.generic_args;
-                size_t concrete_args_count = obj_type.data.custom.generic_args_count;
-
-                id = register_expr_calls(reg, parent, expr, concrete_args, concrete_args_count).id; 
+            StringView parent_sv = sv_from_range(obj_type.data.custom.name);
+            RegisterEntry* parent = register_get(reg, parent_sv);
+            if (!parent) {
+                parent = register_by_name(parent_sv);
             }
+            if (!parent) break;
 
-            return register_from_scope(reg, id);
-        }
+            SourceRange* concrete_args = obj_type.data.custom.generic_args;
+            size_t concrete_args_count = obj_type.data.custom.generic_args_count;
+            EntityID id = register_expr_calls(reg, parent, expr, concrete_args, concrete_args_count); 
 
-        case Expr_Self: {
-            size_t argc = expr->data.self_access.args_count;
-            uint32_t* arg_ids = argc ? malloc(sizeof(uint32_t) * argc) : NULL;
-
-            for (size_t i = 0; i < argc; i++) {
-                RegisterEntry* arg_entry = register_expr(reg, &expr->data.self_access.args[i].value, class_name);
-                arg_ids[i] = arg_entry ? arg_entry->eid.id : 0;
-            }
-
-            if (expr->data.self_access.is_call) {
-                SourceRange mangled = class_name.start ? mangle_name(class_name, expr->data.self_access.target) : expr->data.self_access.target;
-                Register* child = make_child(reg);
-
-                RegisterEntry entry = (RegisterEntry){
-                    .tag = Reg_ExprFunctionCall,
-                    .decl_range = expr->data.self_access.range,
-                    .data.expr_function_call = {
-                        .name = mangled,
-                        .params = expr->data.self_access.args,
-                        .params_count = argc,
-                        .generic_args = NULL,
-                        .generic_args_count = 0,
-                        .child_reg = child,
-                        .arg_ids = arg_ids,
-                        .arg_ids_count = argc,
-                    }
-                };
-                EntityID eid = register_insert(reg, entry);
-                return register_from_scope(reg, eid.id);
-            }
-
-            free(arg_ids);
-            RegisterEntry entry = (RegisterEntry){
-                .tag = Reg_ExprIdentifier,
-                .decl_range = expr->data.self_access.range,
-                .data.expr_identifier = {
-                    .name = expr->data.self_access.target,
-                    .resolved_type = (Type){0},
-                },
-            };
-            EntityID eid = register_insert(reg, entry);
-            return register_from_scope(reg, eid.id);
+            return register_from_scope(reg, id.id);
         }
 
         case Expr_Struct_Calls: {

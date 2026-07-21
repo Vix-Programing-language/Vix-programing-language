@@ -15,16 +15,11 @@ uint32_t register_pattern_condition(Register* cond_child, Exprs* condition_expr,
 
     switch (s_pat.kind) {
         case IfPat_None:
-        case IfPat_Wildcard: 
-            break;
-
+        case IfPat_Wildcard: break;
         case IfPat_Enum:
         case IfPat_Var:
         case IfPat_Let: {
-            if (!cond_entry || 
-                (cond_entry->tag != Reg_ExprFunctionCall && 
-                 cond_entry->tag != Reg_ExprMethodCall && 
-                 cond_entry->tag != Reg_ExprClassCall)) {
+            if (!cond_entry ||  (cond_entry->tag != Reg_ExprFunctionCall &&  cond_entry->tag != Reg_ExprMethodCall &&  cond_entry->tag != Reg_ExprClassCall)) {
                 break;
             }
 
@@ -169,42 +164,64 @@ void register_class(Register* reg, Stmts* stmt) {
     RegisterEntry* class_name = register_by_name(sv_from_range(class_entry.decl_name_range));
 
     for (size_t i = 0; i < c.methods_count; i++) {
-        SourceRange mangled = mangle_name_unique(reg, c.name, c.methods[i].name);
-        Register* method_child = make_child(reg);
-        EntityID method_eid = register_insert(reg, (RegisterEntry){
-            .tag = Reg_Function,
-            .decl_range = c.methods[i].range,
-            .decl_name_range = mangled,
-            .data.function = {
-                .params = c.methods[i].params,
-                .params_count = c.methods[i].params_count,
-                .return_type = c.methods[i].return_type,
-                .is_pub = c.methods[i].is_pub,
-                .child_reg = method_child,
-                .body = c.methods[i].body,
-                .body_count = c.methods[i].body_count,
-                .generic_params = c.generic_params,
-                .generic_params_count = c.generic_params_count,
-                .generic_param_nodes = c.generic_param_nodes,
+    SourceRange mangled = mangle_name_unique(reg, c.name, c.methods[i].name);
+    Register* method_child = make_child(reg);
+    size_t params_count = c.methods[i].params_count;
+    Param* custom_params = c.methods[i].params;
+
+    if (params_count > 0) {
+        custom_params = checked_malloc(sizeof(Param) * params_count);
+        memcpy(custom_params, c.methods[i].params, sizeof(Param) * params_count);
+
+        for (size_t j = 0; j < params_count; j++) {
+            if (!range_eq(custom_params[j].name, "self")) continue;
+            custom_params[j].type = (Type){
+                .tag = Type_Custom,
+                .data.custom = { 
+                    .name = c.name,
+                    .generic_args = c.generic_params,
+                    .generic_args_count = c.generic_params_count,
+                }
+            };
+        }
+    }
+
+    EntityID method_eid = register_insert(reg, (RegisterEntry){
+        .tag = Reg_Function,
+        .decl_range = c.methods[i].range,
+        .decl_name_range = mangled,
+        .data.function = {
+            .params = custom_params,
+            .params_count = params_count,
+            .return_type = c.methods[i].return_type,
+            .is_pub = c.methods[i].is_pub,
+            .child_reg = method_child,
+            .body = c.methods[i].body,
+            .body_count = c.methods[i].body_count,
+            .generic_params = c.generic_params,
+            .generic_params_count = c.generic_params_count,
+            .generic_param_nodes = c.generic_param_nodes,
+            .is_method = true,
+            .owner_class = class_name,
+        }
+    });
+    method_child->owner_id = method_eid.id;
+
+    for (size_t j = 0; j < params_count; j++) {
+        register_insert(method_child, (RegisterEntry){
+            .tag = Reg_Param,
+            .decl_name_range = custom_params[j].name,
+            .data.var = {
+                .type = custom_params[j].type,
+                .mode = custom_params[j].mode,
+                .is_mut = custom_params[j].mode.mutability == Mutability_Mutable,
             }
         });
-        method_child->owner_id = method_eid.id;
-
-        for (size_t j = 0; j < c.methods[i].params_count; j++) {
-            register_insert(method_child, (RegisterEntry){
-                .tag = Reg_Param,
-                .decl_name_range = c.methods[i].params[j].name,
-                .data.var = {
-                    .type = c.methods[i].params[j].type,
-                    .mode = c.methods[i].params[j].mode,
-                    .is_mut = c.methods[i].params[j].mode.mutability == Mutability_Mutable,
-                }
-            });
-        }
-
-        REG_PARAM_EXPRS(method_child, c.methods[i].params, c.methods[i].params_count, c.name);
-        REG_STMTS(method_child, c.methods[i].body, c.methods[i].body_count, c.name);
     }
+
+    REG_PARAM_EXPRS(method_child, custom_params, params_count, c.name);
+    REG_STMTS(method_child, c.methods[i].body, c.methods[i].body_count, c.name);
+}
 }
 
 void register_struct(Register* reg, Stmts* stmt) {
@@ -373,70 +390,135 @@ void register_extern(Register* reg, Stmts* stmt) {
     });
 }
 
+void resolve_classcall(Register* reg, Stmts* stmt) {
+    if (stmt->tag != Stmt_Vars) return;
+    VarData* v = &stmt->data.vars;
+
+    if (v->value.tag == 0) return;
+    if (v->value.tag != Expr_Identifiers) return;
+    if (v->type.tag != Type_Custom) return;
+
+    StringView type_sv = sv_from_range(v->type.data.custom.name);
+    RegisterEntry* type_entry = register_get(reg, type_sv);
+    if (!type_entry || type_entry->tag != Reg_Enum) return;
+
+    v->value = (Exprs){
+        .tag = Expr_Enum_Calls,
+        .data.enum_calls = {
+            .name = v->type.data.custom.name,
+            .field = v->value.data.identifiers.name,
+            .param = NULL,
+            .param_count = 0,
+            .generic_params = v->type.data.custom.generic_args,
+            .generic_params_count = v->type.data.custom.generic_args_count,
+        }
+    };
+}
+
+RegisterEntry* resolve_array(Register* reg, Stmts* stmt, Register* child) {
+    VarData* v = &stmt->data.vars;
+
+    if (v->type.tag != Type_Array) return NULL;
+    if (v->value.tag != Expr_Array) return NULL;
+
+    Type* inner_type = v->type.data.array_t.inner;
+    size_t declared_len = v->type.data.array_t.len;
+    size_t elems_count = v->value.data.array.elems_count;
+    size_t empty = (declared_len > elems_count) ? (declared_len - elems_count) : 0;
+
+    Register* array_child = make_child(child);
+    uint32_t* resolved_ids = malloc(sizeof(uint32_t) * elems_count);
+
+    for (size_t i = 0; i < elems_count; i++) {
+        RegisterEntry* elem_entry = register_expr(array_child, &v->value.data.array.elems[i], (SourceRange){0});
+        resolved_ids[i] = elem_entry ? elem_entry->eid.id : 0;
+    }
+
+    RegisterEntry new_array_entry = (RegisterEntry){
+        .tag = Reg_ExprArray,
+        .data.array = {
+            .elem_ids = resolved_ids,
+            .elems_count = elems_count,
+            .empty = empty,
+            .ty = inner_type,
+            .child_reg = array_child,
+        }
+    };
+
+    EntityID eid = register_insert(reg, new_array_entry);
+    return register_from_scope(reg, eid.id);
+}
+
+void resolve_enum_call(Register* reg, Type* var_type, Exprs* value_expr) {
+    if (var_type->tag != Type_Custom) return;
+
+    StringView type_sv = sv_from_range(var_type->data.custom.name);
+    RegisterEntry* type_entry = register_get(reg, type_sv);
+
+    if (!type_entry || type_entry->tag != Reg_Enum) return;
+
+    SourceRange variant_name;
+    Exprs* params = NULL;
+    int param_count = 0;
+    bool is_valid = false;
+
+    if (value_expr->tag == Expr_Identifiers) {
+        variant_name = value_expr->data.identifiers.name;
+        if (is_enum_variant(type_entry, variant_name)) is_valid = true;
+    } else if (value_expr->tag == Expr_Function) {
+        variant_name = value_expr->data.function_call.name;
+        if (is_enum_variant(type_entry, variant_name)) {
+            params = value_expr->data.function_call.param;
+            param_count = value_expr->data.function_call.param_count;
+            is_valid = true;
+        }
+    }
+
+    if (is_valid) {
+        *value_expr = (Exprs){
+            .tag = Expr_Enum_Calls,
+            .data.enum_calls = {
+                .name                 = var_type->data.custom.name,
+                .field                = variant_name,
+                .param                = params,
+                .param_count          = param_count,
+                .generic_params       = var_type->data.custom.generic_args,
+                .generic_params_count = var_type->data.custom.generic_args_count,
+            }
+        };
+    }
+}
 
 void register_var(Register* reg, Stmts* stmt, SourceRange class_name) {
     assert(stmt->tag == Stmt_Vars);
-    VarData v = stmt->data.vars;
 
-    bool has_init = v.value.tag != 0 || v.value.data.function_call.name.start != NULL;
+    VarData* v = &stmt->data.vars;    
+    bool has_init = v->value.tag != 0 || v->value.data.function_call.name.start != NULL;
     RegisterEntry* init_entry = NULL;
-    Register* child = make_child(reg);
-
-    if (has_init && v.type.tag == Type_Custom && stmt->data.vars.value.tag == Expr_Identifiers) {
-        StringView type_sv = sv_from_range(v.type.data.custom.name);
-        RegisterEntry* type_entry = register_get(reg, type_sv);
-        if (type_entry && type_entry->tag == Reg_Enum) {
-            stmt->data.vars.value = (Exprs){
-                .tag = Expr_Enum_Calls,
-                .data.enum_calls = {
-                    .name = v.type.data.custom.name,
-                    .field = stmt->data.vars.value.data.identifiers.name,
-                    .param = NULL,
-                    .param_count = 0,
-                    .generic_params = v.type.data.custom.generic_args,
-                    .generic_params_count = v.type.data.custom.generic_args_count,
-                }
-            };
-        }
-    }
-
-    if (has_init && v.type.tag == Type_Custom && stmt->data.vars.value.tag == Expr_Function) {
-        StringView type_sv = sv_from_range(v.type.data.custom.name);
-        RegisterEntry* type_entry = register_get(reg, type_sv);
-
-        if (type_entry && type_entry->tag == Reg_Enum) {
-            Exprs* val_expr = &stmt->data.vars.value;
-            SourceRange call_name = val_expr->data.function_call.name;
-
-            if (is_enum_variant(type_entry, call_name)) {
-                *val_expr = (Exprs){
-                    .tag = Expr_Enum_Calls,
-                    .data.enum_calls = {
-                        .name                 = v.type.data.custom.name,
-                        .field                = call_name,
-                        .param                = val_expr->data.function_call.param,
-                        .param_count          = val_expr->data.function_call.param_count,
-                        .generic_params       = v.type.data.custom.generic_args,
-                        .generic_params_count = v.type.data.custom.generic_args_count,
-                    }
-                };
-            }
-        }
-    }
+    Register* child = NULL;
 
     if (has_init) {
-        init_entry = register_expr(child, &stmt->data.vars.value, class_name);
+        child = make_child(reg);
+
+        resolve_enum_call(reg, &v->type, &v->value);
+        resolve_classcall(reg, stmt);
+
+        if (v->type.tag == Type_Array && v->value.tag == Expr_Array) {
+            init_entry = resolve_array(reg, stmt, child);
+        } else {
+            init_entry = register_expr(child, &v->value, class_name);
+        }
     }
 
     register_insert(reg, (RegisterEntry){
         .tag = Reg_Var,
-        .decl_range = v.range,
-        .decl_name_range = v.name,
+        .decl_range = v->range,
+        .decl_name_range = v->name,
         .data.var = {
-            .type      = v.type,
-            .mode      = v.mode,
-            .is_mut    = v.mode.mutability == Mutability_Mutable,
-            .init      = init_entry,
+            .type = v->type,
+            .mode = v->mode,
+            .is_mut = v->mode.mutability == Mutability_Mutable,
+            .init = init_entry,
             .child_reg = child,
         }
     });
@@ -557,11 +639,10 @@ void register_while(Register* reg, Stmts* stmt, SourceRange class_name) {
     WhileData s = stmt->data.whiles;
     Register* cond_child = make_child(reg);
     Register* body_child = make_child(reg);
+    
     RegisterEntry* cond_entry = register_expr(cond_child, &s.cond, class_name);
     uint32_t cond_id = cond_entry ? cond_entry->eid.id : 0;
-
-    REG_STMTS(body_child, s.body, s.body_count, class_name);
-    register_insert(reg, (RegisterEntry){
+    EntityID while_eid = register_insert(reg, (RegisterEntry){
         .tag = Reg_While,
         .decl_range = s.range,
         .data.while_ = {
@@ -570,27 +651,41 @@ void register_while(Register* reg, Stmts* stmt, SourceRange class_name) {
             .body_child = body_child,
             .body = s.body, 
             .body_count = s.body_count,
+            .child_reg = body_child,
         }
     });
-}
 
+    body_child->owner_id = while_eid.id;
+
+    REG_STMTS(body_child, s.body, s.body_count, class_name);
+}
 
 void register_for(Register* reg, Stmts* stmt, SourceRange class_name) {
     assert(stmt->tag == Stmt_Fors);
     ForData s = stmt->data.fors;
     Register* iter_child = make_child(reg);
     Register* body_child = make_child(reg);
+    
     RegisterEntry* iter_entry = register_expr(iter_child, &s.iter, class_name);
     uint32_t iter_id = iter_entry ? iter_entry->eid.id : 0;
-    REG_STMTS(body_child, s.body, s.body_count, class_name);
-    register_insert(reg, (RegisterEntry){
+
+    EntityID for_eid = register_insert(reg, (RegisterEntry){
         .tag = Reg_For,
         .decl_range = s.range,
         .data.for_ = {
-            .var = s._var, .iter_id = iter_id, .iter_child = iter_child, .body_child = body_child,
-            .body = s.body, .body_count = s.body_count,
+            .var = s._var, 
+            .iter_id = iter_id, 
+            .iter_child = iter_child, 
+            .body_child = body_child,
+            .body = s.body, 
+            .body_count = s.body_count,
+            .child_reg = body_child
         }
     });
+
+    body_child->owner_id = for_eid.id;
+
+    REG_STMTS(body_child, s.body, s.body_count, class_name);
 }
 
 void register_match(Register* reg, Stmts* stmt, SourceRange class_name) {
