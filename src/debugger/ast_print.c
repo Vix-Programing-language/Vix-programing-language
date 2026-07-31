@@ -116,8 +116,6 @@ for (size_t i = 0; i < stmt.data.extern_.funcs_count; i++) {
         if (!fn->name.start || !fn->name.end || fn->name.end < fn->name.start) {
             printf("EXTERN_FUNC: [bad name range]\n"); continue;
         }
-        
-        print_type_inline(fn->return_type);
 
         for (int d = 0; d < depth + 1; d++) printf("  ");
         printf("EXTERN_FUNC: %.*s -> ",
