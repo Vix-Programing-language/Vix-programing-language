@@ -368,8 +368,6 @@ void ir_print_module(IR_Module *mod) {
     printf("module \"%s\" (%zu defs)\n", mod->name ? mod->name : "?", mod->defs.len);
     for (size_t i = 0; i < mod->defs.len; i++) {
         print_ir_def(&mod->defs.data[i]);
-
-        print_ir_def(&mod->defs.data[i]);
         printf("\n");
     }
 }
